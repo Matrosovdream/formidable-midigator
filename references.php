@@ -24,3 +24,14 @@ define('MIDIGATOR_SETTINGS', [
     'token_refresh_buffer' => 60,
     'token_fallback_ttl'   => 300,
 ]);
+
+define('MIDIGATOR_LOG_FOLDER', FRM_MDG_BASE_URL . '/logs');
+
+define('MIDIGATOR_WEBHOOK_URLS', 
+[
+    'prevention'       => home_url('/wp-json/frm-midigator/v1/prevention'),
+    'prevention.new'   => home_url('/wp-json/frm-midigator/v1/prevention-new'),
+    'prevention.match' => home_url('/wp-json/frm-midigator/v1/prevention-match'),
+]);
+
+define('MIDIGATOR_WEBHOOK_EMAIL', '');
