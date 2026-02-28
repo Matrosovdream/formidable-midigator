@@ -15,11 +15,7 @@ class FrmMidigatorLogger {
     /**
      * Short log type → filename
      */
-    private const LOG_MAP = [
-        'prevention'            => 'prevention_webhook.log',
-        'prevention.new'        => 'prevention_new.log',
-        'prevention.match'      => 'prevention_match.log'
-    ];
+    private const LOG_MAP = MIDIGATOR_LOG_MAP;
 
     public function __construct(?string $base_dir = null) {
 
