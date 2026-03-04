@@ -3,8 +3,21 @@ if ( ! defined('ABSPATH') ) { exit; }
 
 class FrmMidigatorApi extends MidigatorLib {
 
-    public function __construct(string $apiSecret, bool $sandbox = false, ?array $cfg = null) {
+    public function __construct(string $apiSecret="", bool $sandbox = false, ?array $cfg = null) {
+
+        $apiSecret = MIDIGATOR_API_SECRET;
+        $sandbox   = MIDIGATOR_SANDBOX_MODE;
+
         parent::__construct($apiSecret, $sandbox, $cfg);
+    }
+
+    /* ============================================================
+     * Ping event
+     * ============================================================ */
+
+     public function pingEvent(string $eventType): array {
+        $url = $this->buildUrl('ping', $eventType, []); // For example, chargeback.new 
+        return $this->request('GET', $url);
     }
 
     /* ============================================================
@@ -97,7 +110,11 @@ class FrmMidigatorApi extends MidigatorLib {
         $preventionGuid = trim($preventionGuid);
         $resolutionType = trim($resolutionType);
 
-        if ($preventionGuid === '' || $resolutionType === '') {
+        if ( 
+            $preventionGuid === '' || 
+            $resolutionType === '' || 
+            !isset(MIDIGATOR_RESOLVE_PREVENTION_REASONS[$resolutionType])
+            ) {
             return ['ok' => false, 'error' => 'Missing preventionGuid/resolutionType'];
         }
 
