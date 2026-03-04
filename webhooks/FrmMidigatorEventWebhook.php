@@ -71,6 +71,7 @@ class FrmMidigatorEventWebhook {
 
         $body = (string) $request->get_body();
         $data = json_decode($body, true);
+        $dataFields = $data;
 
         if (!is_array($data)) {
             $data = [
@@ -90,6 +91,19 @@ class FrmMidigatorEventWebhook {
                 'received_at'   => gmdate('Y-m-d H:i:s') . ' UTC',
             ]
         );
+
+        // Put into the Preventions table using model
+        if (
+            $type === 'prevention.new' && 
+            class_exists('FrmMidigatorPreventionModel')
+            ) {
+            try {
+                $model = new FrmMidigatorPreventionModel();
+                $model->create($dataFields);
+            } catch (\Throwable $e) {
+                
+            }
+        }
 
         // Log using your logger (if exists)
         if (class_exists('FrmMidigatorLogger')) {
