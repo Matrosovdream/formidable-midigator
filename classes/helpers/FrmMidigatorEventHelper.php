@@ -5,8 +5,8 @@ class FrmMidigatorEventHelper {
 
     protected FrmMidigatorApi $api;
 
-    public function __construct(FrmMidigatorApi $api) {
-        $this->api = $api;
+    public function __construct(FrmMidigatorApi $api=null) {
+        $this->api = $api ?? new FrmMidigatorApi();
     }
 
     /**
