@@ -95,7 +95,7 @@ class FrmMidigatorApi extends MidigatorLib {
         return $this->request('POST', $endpoint, $payload);
     }
 
-    public function getPreventionData(string $preventionGuid): array {
+    public function getPreventionData(string $preventionGuid) {
         $preventionGuid = trim($preventionGuid);
         if ($preventionGuid === '') {
             return ['ok' => false, 'error' => 'Missing preventionGuid'];
@@ -105,7 +105,7 @@ class FrmMidigatorApi extends MidigatorLib {
         return $this->request('GET', $url);
     }
 
-    public function resolvePreventionAlert(string $preventionGuid, string $resolutionType, string $otherDescription = ''): array {
+    public function resolvePreventionAlert(string $preventionGuid, string $resolutionType, string $otherDescription = ''):mixed {
 
         $preventionGuid = trim($preventionGuid);
         $resolutionType = trim($resolutionType);
@@ -115,7 +115,7 @@ class FrmMidigatorApi extends MidigatorLib {
             $resolutionType === '' || 
             !isset(MIDIGATOR_RESOLVE_PREVENTION_REASONS[$resolutionType])
             ) {
-            return ['ok' => false, 'error' => 'Missing preventionGuid/resolutionType'];
+            return WP_error('invalid_input', 'Missing preventionGuid/resolutionType or invalid resolutionType');
         }
 
         $payload = [
