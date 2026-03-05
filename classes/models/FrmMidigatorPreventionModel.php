@@ -1,24 +1,14 @@
 <?php
 /**
- * Midigator Preventions DB Model
+ * Preventions DB Model
  * Table: {$wpdb->prefix}frm_midigator_preventions
- * DB Version: 1.0.0
+ * DB Version: 1.1.0
  */
-
-if ( ! defined( 'ABSPATH' ) ) { exit; }
-
 class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
 
-    /** Start db version from 1.0.0 */
-    public const DB_VERSION = '1.0.0';
+    public const DB_VERSION = '1.1.0';
 
-    /** @var wpdb */
-    protected $db;
-
-    /** @var string Fully-qualified table name incl. prefix */
-    protected string $table;
-
-    /** Whitelisted sortable columns for frm_midigator_preventions */
+    /** Whitelisted sortable columns */
     private const SORTABLE = [
         'id',
         'amount',
@@ -36,6 +26,7 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
         'prevention_timestamp',
         'prevention_type',
         'transaction_timestamp',
+        'is_resolved',
         'created_at',
         'updated_at',
     ];
@@ -56,83 +47,109 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
         'prevention_timestamp',
         'prevention_type',
         'transaction_timestamp',
+        'is_resolved',
+        // created_at / updated_at are auto, but allow manual set if you want
         'created_at',
         'updated_at',
     ];
 
     public function __construct() {
-        global $wpdb;
-        $this->db    = $wpdb;
+        parent::__construct();
         $this->table = $this->db->prefix . 'frm_midigator_preventions';
     }
 
     /**
-     * Update row by prevention_guid (unique).
+     * Mark prevention as resolved/unresolved by guid.
      *
-     * @return int|WP_Error Number of rows updated (0/1/...) or WP_Error on failure
+     * @return int|WP_Error
      */
-    public function updateByGuid( string $guid, array $data ) {
-        $guid = trim( (string) $guid );
-        if ( $guid === '' ) {
-            return new WP_Error( 'invalid_guid', __( 'Invalid GUID.', 'frm-midigator' ) );
-        }
-
-        if ( empty( $data ) ) {
-            return new WP_Error( 'empty_data', __( 'No data to update.', 'frm-midigator' ) );
-        }
-
-        $data = $this->filterData( $data );
-
-        // Normalize timestamps if present
-        if ( isset( $data['prevention_timestamp'] ) && $data['prevention_timestamp'] !== '' ) {
-            $data['prevention_timestamp'] = $this->dateToMysql( (string) $data['prevention_timestamp'] );
-        }
-        if ( isset( $data['transaction_timestamp'] ) && $data['transaction_timestamp'] !== '' ) {
-            $data['transaction_timestamp'] = $this->dateToMysql( (string) $data['transaction_timestamp'] );
-        }
-        if ( isset( $data['created_at'] ) && $data['created_at'] !== '' ) {
-            $data['created_at'] = $this->dateToMysql( (string) $data['created_at'] );
-        }
-        if ( isset( $data['updated_at'] ) && $data['updated_at'] !== '' ) {
-            $data['updated_at'] = $this->dateToMysql( (string) $data['updated_at'] );
-        }
-
-        if ( empty( $data ) ) {
-            return new WP_Error( 'empty_data', __( 'No data to update.', 'frm-midigator' ) );
-        }
-
-        $res = $this->db->update(
-            $this->table,
-            $data,
-            [ 'prevention_guid' => $guid ]
-        );
-
-        if ( false === $res ) {
-            return new WP_Error(
-                'db_update_failed',
-                __( 'Database update failed.', 'frm-midigator' ),
-                [ 'last_error' => $this->db->last_error ]
-            );
-        }
-
-        return (int) $res;
+    public function setResolved( string $guid, bool $resolved = true ) {
+        return $this->updateByGuid( $guid, [ 'is_resolved' => $resolved ? 1 : 0 ], 'prevention_guid' );
     }
 
     /**
-     * Base list query for frm_midigator_preventions.
+     * Create (or update/create) resolve row for a prevention GUID.
      *
-     * Returns:
-     * [
-     *   'items' => [...rows...],
-     *   'pagination' => [
-     *     'page' => (int),
-     *     'per_page' => (int),
-     *     'total' => (int),
-     *     'total_pages' => (int),
-     *   ]
-     * ]
+     * - Loads prevention by guid
+     * - Ensures prevention_id + prevention_guid are set
+     * - Saves into frm_midigator_resolves using updateCreateByGuid (guid column = prevention_guid)
      *
-     * NOTE: For pagination it uses ONE SQL call via SQL_CALC_FOUND_ROWS + FOUND_ROWS().
+     * @return int|WP_Error inserted id OR updated rows count (from updateCreateByGuid)
+     */
+    public function createResolve( string $guid, array $data ) {
+        $guid = trim( (string) $guid );
+        if ( $guid === '' ) {
+            return WP_error( 'invalid_guid', __( 'Invalid GUID.', 'frm-midigator' ) );
+        }
+
+        // 1) Find prevention
+        $prev = $this->getByGuid( $guid, 'prevention_guid' );
+
+        if ( empty( $prev ) || empty( $prev['id'] ) ) {
+            return WP_error( 'prevention_not_found', __( 'Prevention not found.', 'frm-midigator' ) );
+        }
+
+        $preventionId = (int) $prev['id'];
+
+        // 2) Ensure required foreign fields
+        $data['prevention_id']   = $preventionId;
+        $data['prevention_guid'] = $guid;
+
+        // 3) Save resolve (upsert by prevention_guid)
+        $resolveModel = new FrmMidigatorResolveModel();
+        return $resolveModel->updateCreateByGuid( $guid, $data, 'prevention_guid' );
+    }
+
+    /**
+     * Get entities (resolve + history) for a prevention row id.
+     *
+     * resolve         -> one row via ResolveModel::getByPreventionId($preventionId)
+     * resolve_history -> ALL rows via HistoryModel filtered by prevention_id (not resolve_id)
+     *
+     * @param int   $preventionId
+     * @param array $entities ['resolve','resolve_history'] or ['resolve'=>true,'resolve_history'=>true]
+     * @return array|WP_Error
+     */
+    public function getEntitiesById( int $preventionId, array $entities = [ 'resolve', 'resolve_history' ] ) {
+        $preventionId = (int) $preventionId;
+        if ( $preventionId <= 0 ) {
+            return new WP_Error( 'invalid_id', __( 'Invalid prevention ID.', 'frm-midigator' ) );
+        }
+
+        $wantResolve = in_array( 'resolve', $entities, true ) || ( isset( $entities['resolve'] ) && $entities['resolve'] );
+        $wantHist    = in_array( 'resolve_history', $entities, true ) || ( isset( $entities['resolve_history'] ) && $entities['resolve_history'] );
+
+        $out = [
+            'resolve'         => null,
+            'resolve_history' => [],
+        ];
+
+        $resolveModel = new FrmMidigatorResolveModel();
+        $histModel    = new FrmMidigatorResolveHistoryModel();
+
+        if ( $wantResolve ) {
+            $resolve = $resolveModel->getByPreventionId( $preventionId );
+            if ( is_wp_error( $resolve ) ) { return $resolve; }
+            $out['resolve'] = $resolve;
+        }
+
+        if ( $wantHist ) {
+            // IMPORTANT: history by prevention_id (ALL rows), not resolve_id
+            $history = $histModel->getList(
+                [ 'prevention_id' => $preventionId ],
+                [ 'page' => 1, 'per_page' => 2000, 'order_by' => 'id', 'order' => 'DESC' ]
+            );
+            if ( is_wp_error( $history ) ) { return $history; }
+            $out['resolve_history'] = $history['data'] ?? [];
+        }
+
+        return $out;
+    }
+
+    /**
+     * List query with optional includeEntities injection.
+     *
+     * $opts['includeEntities'] = ['resolve','resolve_history']
      */
     public function getList( array $filter = [], array $opts = [] ) {
 
@@ -142,24 +159,29 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
         // Exact filters
         if ( isset( $filter['id'] ) && $filter['id'] !== '' ) { $where[] = 'id = %d'; $params[] = (int) $filter['id']; }
 
-        if ( ! empty( $filter['arn'] ) )                   { $where[] = 'arn = %s'; $params[] = (string) $filter['arn']; }
-        if ( ! empty( $filter['mid'] ) )                   { $where[] = 'mid = %s'; $params[] = (string) $filter['mid']; }
-        if ( ! empty( $filter['order_guid'] ) )            { $where[] = 'order_guid = %s'; $params[] = (string) $filter['order_guid']; }
-        if ( ! empty( $filter['order_id'] ) )              { $where[] = 'order_id = %s'; $params[] = (string) $filter['order_id']; }
-        if ( ! empty( $filter['prevention_case_number'] ) ){ $where[] = 'prevention_case_number = %s'; $params[] = (string) $filter['prevention_case_number']; }
-        if ( ! empty( $filter['prevention_guid'] ) )       { $where[] = 'prevention_guid = %s'; $params[] = (string) $filter['prevention_guid']; }
-        if ( ! empty( $filter['prevention_type'] ) )       { $where[] = 'prevention_type = %s'; $params[] = (string) $filter['prevention_type']; }
+        if ( isset( $filter['is_resolved'] ) && $filter['is_resolved'] !== '' ) {
+            $where[]  = 'is_resolved = %d';
+            $params[] = (int) ( (bool) $filter['is_resolved'] ? 1 : 0 );
+        }
 
-        if ( ! empty( $filter['card_brand'] ) )            { $where[] = 'card_brand = %s'; $params[] = (string) $filter['card_brand']; }
-        if ( ! empty( $filter['card_first_6'] ) )          { $where[] = 'card_first_6 = %s'; $params[] = (string) $filter['card_first_6']; }
-        if ( ! empty( $filter['card_last_4'] ) )           { $where[] = 'card_last_4 = %s'; $params[] = (string) $filter['card_last_4']; }
-        if ( ! empty( $filter['currency'] ) )              { $where[] = 'currency = %s'; $params[] = (string) $filter['currency']; }
+        if ( ! empty( $filter['arn'] ) )                    { $where[] = 'arn = %s'; $params[] = (string) $filter['arn']; }
+        if ( ! empty( $filter['mid'] ) )                    { $where[] = 'mid = %s'; $params[] = (string) $filter['mid']; }
+        if ( ! empty( $filter['order_guid'] ) )             { $where[] = 'order_guid = %s'; $params[] = (string) $filter['order_guid']; }
+        if ( ! empty( $filter['order_id'] ) )               { $where[] = 'order_id = %s'; $params[] = (string) $filter['order_id']; }
+        if ( ! empty( $filter['prevention_case_number'] ) ) { $where[] = 'prevention_case_number = %s'; $params[] = (string) $filter['prevention_case_number']; }
+        if ( ! empty( $filter['prevention_guid'] ) )        { $where[] = 'prevention_guid = %s'; $params[] = (string) $filter['prevention_guid']; }
+        if ( ! empty( $filter['prevention_type'] ) )        { $where[] = 'prevention_type = %s'; $params[] = (string) $filter['prevention_type']; }
+
+        if ( ! empty( $filter['card_brand'] ) )             { $where[] = 'card_brand = %s'; $params[] = (string) $filter['card_brand']; }
+        if ( ! empty( $filter['card_first_6'] ) )           { $where[] = 'card_first_6 = %s'; $params[] = (string) $filter['card_first_6']; }
+        if ( ! empty( $filter['card_last_4'] ) )            { $where[] = 'card_last_4 = %s'; $params[] = (string) $filter['card_last_4']; }
+        if ( ! empty( $filter['currency'] ) )               { $where[] = 'currency = %s'; $params[] = (string) $filter['currency']; }
 
         // Ranged numeric filters
         if ( isset( $filter['amount_from'] ) && $filter['amount_from'] !== '' ) { $where[] = 'amount >= %f'; $params[] = (float) $filter['amount_from']; }
         if ( isset( $filter['amount_to'] ) && $filter['amount_to'] !== '' )     { $where[] = 'amount <= %f'; $params[] = (float) $filter['amount_to']; }
 
-        // Helper for datetime-ish ranges
+        // Datetime-ish ranges
         $addRange = function( string $col, string $fromKey, string $toKey ) use ( &$where, &$params, $filter ) {
             if ( isset( $filter[ $fromKey ] ) && $filter[ $fromKey ] !== '' ) { $where[] = "{$col} >= %s"; $params[] = (string) $filter[ $fromKey ]; }
             if ( isset( $filter[ $toKey ] ) && $filter[ $toKey ] !== '' )     { $where[] = "{$col} <= %s"; $params[] = (string) $filter[ $toKey ]; }
@@ -170,7 +192,7 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
         $addRange( 'created_at',             'created_from',         'created_to' );
         $addRange( 'updated_at',             'updated_from',         'updated_to' );
 
-        // Search (LIKE) across common columns
+        // Search (LIKE)
         if ( ! empty( $filter['search'] ) ) {
             $like = '%' . $this->db->esc_like( (string) $filter['search'] ) . '%';
 
@@ -199,12 +221,10 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
 
         $order = ( isset( $opts['order'] ) && strtoupper( (string) $opts['order'] ) === 'ASC' ) ? 'ASC' : 'DESC';
 
-        // Resolve pagination
         $page     = isset( $opts['page'] ) ? max( 1, (int) $opts['page'] ) : 1;
         $per_page = isset( $opts['per_page'] ) ? max( 1, (int) $opts['per_page'] ) : ( isset( $opts['limit'] ) ? max( 1, (int) $opts['limit'] ) : 50 );
         $offset   = ( $page - 1 ) * $per_page;
 
-        // One-call pagination: SQL_CALC_FOUND_ROWS + FOUND_ROWS()
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $sql  = "SELECT SQL_CALC_FOUND_ROWS * FROM {$this->table} {$whereSql} ORDER BY {$orderBy} {$order} LIMIT %d OFFSET %d";
         $args = array_merge( $params, [ $per_page, $offset ] );
@@ -223,9 +243,25 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
             );
         }
 
-        // Total from the same call (MySQL session result)
         $total = (int) $this->db->get_var( 'SELECT FOUND_ROWS()' );
 
-        return $this->finalizePaginatedResult( $rows, $page, $per_page, $total );
+        $result = $this->finalizePaginatedResult( $rows ?: [], $page, $per_page, $total );
+
+        // Inject entities if requested
+        $includeEntities = $opts['includeEntities'] ?? []; 
+        if ( ! empty( $includeEntities ) && ! empty( $result['data'] ) ) {
+            foreach ( $result['data'] as &$row ) {
+                $pid = isset( $row['id'] ) ? (int) $row['id'] : 0;
+                if ( $pid > 0 ) {
+                    $entities = $this->getEntitiesById( $pid, (array) $includeEntities ); 
+                    if ( ! is_wp_error( $entities ) ) {
+                        $row['_entities'] = $entities;
+                    }
+                }
+            }
+            unset( $row );
+        }
+
+        return $result;
     }
 }
