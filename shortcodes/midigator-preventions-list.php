@@ -5,21 +5,22 @@ final class MidigatorPreventionsListShortcode {
 
     public const SHORTCODE = 'midigator-preventions-list';
 
-    /** GET params (UI only for now) */
+    /** GET params */
     private const QP_PAGE        = 'mid_pre_page';
-    private const QP_Q           = 'mid_pre_q'; // kept for compatibility, but hidden
-    private const QP_SORT        = 'mid_pre_sort'; // arn|case|date
-    private const QP_DIR         = 'mid_pre_dir';  // asc|desc
+    private const QP_Q           = 'mid_pre_q';
+    private const QP_SORT        = 'mid_pre_sort';
+    private const QP_DIR         = 'mid_pre_dir';
 
-    // NEW filter params
     private const QP_CARD_FIRST6 = 'card_first_6';
     private const QP_CARD_LAST4  = 'card_last_4';
 
     private const ALERT_EXPIRATION_HOURS = 72;
 
     /** AJAX */
-    private const NONCE_ACTION         = 'midigator_preventions_nonce';
-    private const AJAX_ACTION_RESOLVE  = 'midigator_resolve_prevention';
+    private const NONCE_ACTION             = 'midigator_preventions_nonce';
+    private const AJAX_ACTION_RESOLVE      = 'midigator_resolve_prevention';
+    private const AJAX_ACTION_BULK_RESOLVE = 'midigator_bulk_resolve_prevention';
+    private const AJAX_ACTION_BULK_REFUND  = 'midigator_bulk_full_refund_prevention';
 
     /** Assets */
     private const CSS_HANDLE = 'midigator-preventions-list-css';
@@ -28,41 +29,35 @@ final class MidigatorPreventionsListShortcode {
     public function __construct() {
         add_shortcode(self::SHORTCODE, [ $this, 'render_shortcode' ]);
 
-        // AJAX (logged-in). If you need public later: add wp_ajax_nopriv_
         add_action('wp_ajax_' . self::AJAX_ACTION_RESOLVE, [ $this, 'ajax_resolve_prevention' ]);
+        add_action('wp_ajax_' . self::AJAX_ACTION_BULK_RESOLVE, [ $this, 'ajax_bulk_resolve_prevention' ]);
+        add_action('wp_ajax_' . self::AJAX_ACTION_BULK_REFUND, [ $this, 'ajax_bulk_full_refund_prevention' ]);
     }
 
     public function render_shortcode($atts = []): string {
 
         $this->enqueue_assets();
 
-        // Shortcode attr: show-resolved="true|false" (default false)
         $atts = shortcode_atts([
-            'show-resolved' => 'false',
+            'show-resolved'       => 'false',
+            'default-bulk-reason' => '',
         ], (array) $atts, self::SHORTCODE);
 
-        $showResolved = filter_var($atts['show-resolved'], FILTER_VALIDATE_BOOLEAN);
+        $showResolved      = filter_var($atts['show-resolved'], FILTER_VALIDATE_BOOLEAN);
+        $defaultBulkReason = sanitize_text_field((string) $atts['default-bulk-reason']);
 
-        // UI-only filter/sort state (no backend filtering yet)
         $page = isset($_GET[self::QP_PAGE]) ? max(1, (int) $_GET[self::QP_PAGE]) : 1;
-
-        // OLD search (hidden now, but keep reading it to not break old links)
         $q    = isset($_GET[self::QP_Q]) ? sanitize_text_field((string) $_GET[self::QP_Q]) : '';
-
         $sort = isset($_GET[self::QP_SORT]) ? sanitize_key((string) $_GET[self::QP_SORT]) : '';
         $dir  = isset($_GET[self::QP_DIR]) ? sanitize_key((string) $_GET[self::QP_DIR]) : '';
 
         if (!in_array($sort, ['arn','case','date'], true)) $sort = '';
         if (!in_array($dir, ['asc','desc'], true)) $dir = '';
 
-        // NEW: card filters from GET
         $card_first_6 = isset($_GET[self::QP_CARD_FIRST6]) ? preg_replace('/\D+/', '', (string) $_GET[self::QP_CARD_FIRST6]) : '';
         $card_last_4  = isset($_GET[self::QP_CARD_LAST4])  ? preg_replace('/\D+/', '', (string) $_GET[self::QP_CARD_LAST4])  : '';
 
-        // Build filters: only pass if not empty (and optionally clamp length)
         $filters = [];
-
-        // By default False
         $filters['is_resolved'] = $showResolved ? true : false;
 
         if ($card_first_6 !== '') {
@@ -76,44 +71,65 @@ final class MidigatorPreventionsListShortcode {
         $opts = [
             'page' => $page,
             'per_page' => $per_page,
-            'includeEntities' => [ 'resolve', 'resolve_history' ]
+            'includeEntities' => [ 'resolve', 'resolve_history', 'orders' ],
         ];
 
         $list = $this->safe_get_list($filters, $opts);
 
-        if( isset( $_GET['log'] ) ) {
-            echo "<pre>";
+        if (isset($_GET['log'])) {
+            echo '<pre>';
             print_r($list);
-            echo "</pre>";
-        } 
+            echo '</pre>';
+        }
 
         $p = isset($list['pagination']) && is_array($list['pagination']) ? $list['pagination'] : [];
-        $cur_page    = isset($p['page']) ? max(1, (int)$p['page']) : $page;
-        $total_pages = isset($p['total_pages']) ? max(1, (int)$p['total_pages']) : 1;
+        $cur_page    = isset($p['page']) ? max(1, (int) $p['page']) : $page;
+        $total_pages = isset($p['total_pages']) ? max(1, (int) $p['total_pages']) : 1;
 
         $base_url = $this->current_url_without([ self::QP_PAGE ]);
+
+        $reasons = (defined('MIDIGATOR_RESOLVE_PREVENTION_REASONS') && is_array(MIDIGATOR_RESOLVE_PREVENTION_REASONS))
+            ? MIDIGATOR_RESOLVE_PREVENTION_REASONS
+            : [];
 
         ob_start();
         ?>
         <div class="mid-pre-wrap" id="mid-pre">
 
             <div class="mid-pre-head">
-                <div class="mid-pre-title">
-                    <?php echo $showResolved ? 'Prevention Flow - Resolved' : 'Prevention Flow'; ?>
+                <div>
+                    <div class="mid-pre-title">
+                        <?php echo $showResolved ? 'Prevention Flow - Resolved' : 'Prevention Flow'; ?>
+                    </div>
+                </div>
+
+                <div class="mid-pre-actions">
+                    <select id="midPreBulkReason" class="mid-pre-bulk-select">
+                        <option value="">— Select reason —</option>
+                        <?php foreach ($reasons as $value => $label): ?>
+                            <option
+                                value="<?php echo esc_attr((string) $value); ?>"
+                                <?php selected((string) $defaultBulkReason, (string) $value); ?>
+                            >
+                                <?php echo esc_html((string) $label); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+
+                    <button class="faip-btn faip-btn-primary" id="midPreBulkResolve" type="button" disabled>Resolve</button>
+                    <button class="faip-btn faip-btn-success" id="midPreBulkRefund" type="button" disabled>Full refund</button>
                 </div>
             </div>
 
-            <!-- Filters -->
             <form method="get" class="mid-pre-filters" id="midPreFiltersForm">
                 <?php
                 foreach ($_GET as $k => $v) {
                     if (in_array($k, [self::QP_PAGE, self::QP_Q, self::QP_CARD_FIRST6, self::QP_CARD_LAST4], true)) continue;
                     if (is_array($v)) continue;
-                    echo '<input type="hidden" name="' . esc_attr($k) . '" value="' . esc_attr((string)$v) . '">';
+                    echo '<input type="hidden" name="' . esc_attr($k) . '" value="' . esc_attr((string) $v) . '">';
                 }
                 ?>
 
-                <!-- Search removed / hidden -->
                 <input type="hidden" name="<?php echo esc_attr(self::QP_Q); ?>" value="<?php echo esc_attr($q); ?>">
 
                 <div class="mid-pre-filter">
@@ -126,7 +142,6 @@ final class MidigatorPreventionsListShortcode {
                         pattern="[0-9]*"
                         value="<?php echo esc_attr($card_first_6); ?>"
                         placeholder="e.g. 551306"
-                        style="width: 160px;"
                         maxlength="6"
                     />
                 </div>
@@ -141,7 +156,6 @@ final class MidigatorPreventionsListShortcode {
                         pattern="[0-9]*"
                         value="<?php echo esc_attr($card_last_4); ?>"
                         placeholder="e.g. 9157"
-                        style="width: 140px;"
                         maxlength="4"
                     />
                 </div>
@@ -157,10 +171,12 @@ final class MidigatorPreventionsListShortcode {
                 <input type="hidden" name="<?php echo esc_attr(self::QP_PAGE); ?>" value="1">
             </form>
 
+            <div class="mid-pre-statusbar" id="midPreBulkStatusbar"></div>
+
             <div class="mid-pre-statusbar" id="midPreStatusbar">
                 <?php
                 if (!empty($list['error'])) {
-                    echo '<span class="mid-pre-msg err">' . esc_html((string)$list['error']) . '</span>';
+                    echo '<span class="mid-pre-msg err">' . esc_html((string) $list['error']) . '</span>';
                 }
                 ?>
             </div>
@@ -169,20 +185,15 @@ final class MidigatorPreventionsListShortcode {
                 <thead>
                     <tr>
                         <th style="width:34px;"><input type="checkbox" id="midPreCheckAll"></th>
-
                         <th style="width:160px;">Received on</th>
                         <th style="width:160px;">Transaction date</th>
                         <th style="width:170px;">Alert expiration</th>
-
                         <th style="width:120px;">Amount</th>
-
                         <th style="width:90px;">BIN</th>
                         <th style="width:80px;">Last 4</th>
-
                         <th style="width:220px;">ARN</th>
                         <th style="width:260px;">Descriptor</th>
-
-                        <th style="width:220px;">Actions</th>
+                        <th style="width:260px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -215,7 +226,6 @@ final class MidigatorPreventionsListShortcode {
 
         </div>
 
-        <!-- Resolve modal -->
         <div class="mid-pre-backdrop" id="midPreResolveModal" aria-hidden="true">
             <div class="mid-pre-modal">
                 <button type="button" class="mid-pre-modal-close" id="midPreResolveClose" aria-label="Close">×</button>
@@ -228,25 +238,18 @@ final class MidigatorPreventionsListShortcode {
 
                         <select id="midPreResolveReason" style="width:100%;">
                             <option value="">— Select —</option>
-                            <?php
-                            $reasons = (defined('MIDIGATOR_RESOLVE_PREVENTION_REASONS') && is_array(MIDIGATOR_RESOLVE_PREVENTION_REASONS))
-                                ? MIDIGATOR_RESOLVE_PREVENTION_REASONS
-                                : [];
-
-                            foreach ($reasons as $value => $label): ?>
-                                <option value="<?php echo esc_attr((string)$value); ?>">
-                                    <?php echo esc_html((string)$label); ?>
+                            <?php foreach ($reasons as $value => $label): ?>
+                                <option value="<?php echo esc_attr((string) $value); ?>">
+                                    <?php echo esc_html((string) $label); ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
 
-                        <!-- Other note -->
                         <div class="mid-pre-field" id="midPreOtherWrap" style="margin-top:10px; display:none;">
                             <div class="mid-pre-field-label">Other note</div>
                             <textarea id="midPreResolveNote" rows="4" style="width:100%; resize:vertical;" placeholder="Write note..."></textarea>
                         </div>
 
-                        <!-- Error/success area (replaces "Note here") -->
                         <div class="mid-pre-modal-statusbar" id="midPreResolveStatusbar"></div>
                     </div>
                 </div>
@@ -267,257 +270,30 @@ final class MidigatorPreventionsListShortcode {
         wp_register_style(self::CSS_HANDLE, false, [], '1.0.1');
         wp_enqueue_style(self::CSS_HANDLE);
 
-        wp_add_inline_style(self::CSS_HANDLE, '
-            .mid-pre-wrap{padding:10px 0}
-            .mid-pre-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-            .mid-pre-title{font-size:18px;font-weight:700}
+        wp_enqueue_style(
+            'dotfiler-ai-photos-page-css',
+            esc_url(FRM_MDG_BASE_PATH . 'assets/midigator-list.css?time=' . time()),
+            [],
+            '1.0.0'
+        );
 
-            .mid-pre-filters{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:10px 0}
-            .mid-pre-filter{display:flex;flex-direction:column;gap:6px}
-            .mid-pre-filter label{font-weight:600;font-size:12px;color:#24292f}
-            .mid-pre-filter input[type="text"]{border:1px solid #d0d7de;border-radius:8px;padding:8px 10px;font-size:14px}
-            .mid-pre-inline{display:flex;gap:10px;align-items:center}
+        wp_enqueue_script(
+            'dotfiler-ai-photos-page-js',
+            esc_url(FRM_MDG_BASE_PATH . 'assets/midigator-list.js?time=' . time()),
+            [],
+            '1.0.0',
+            true
+        );
 
-            .mid-pre-statusbar{min-height:18px;margin:8px 0}
-            .mid-pre-msg{display:inline-block;font-size:12px;padding:2px 6px;border-radius:4px;border:1px solid #d0d7de}
-            .mid-pre-msg.err{color:#b00020;border-color:#b00020}
-
-            /* headers left and rows same */
-            .mid-pre-table th,.mid-pre-table td{vertical-align:top;text-align:left !important}
-
-            .mid-pre-footer{margin-top:12px;display:flex;justify-content:flex-end}
-            .mid-pre-pager{display:flex;gap:10px;align-items:center}
-
-            .mid-pre-btn{display:inline-block;border:1px solid #d0d7de;border-radius:8px;padding:6px 10px;text-decoration:none;background:#fff;cursor:pointer}
-            .mid-pre-btn.is-disabled{opacity:.5;pointer-events:none}
-            .mid-pre-btn-primary{border-color:#0969da}
-            .mid-pre-btn-success{border-color:#0a7a2b}
-
-            .mid-pre-page{color:#57606a;font-size:12px}
-            .mid-pre-muted{color:#57606a;font-size:12px}
-
-            /* modal */
-            .mid-pre-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:99999}
-            .mid-pre-backdrop.is-open{display:flex}
-            .mid-pre-modal{width:100%;max-width:520px;background:#fff;border-radius:12px;border:1px solid #d0d7de;box-shadow:0 12px 40px rgba(0,0,0,.25);padding:14px 16px;position:relative}
-            .mid-pre-modal-close{position:absolute;right:10px;top:8px;border:0;background:transparent;font-size:22px;line-height:1;cursor:pointer;color:#57606a}
-            .mid-pre-modal-title{font-size:16px;font-weight:700;margin-bottom:10px}
-            .mid-pre-modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
-            .mid-pre-field-label{font-weight:600;margin-bottom:6px}
-            .mid-pre-modal-statusbar{margin-top:10px;min-height:18px;font-size:12px}
-            .mid-pre-inline-msg{display:inline-block;padding:2px 6px;border-radius:4px;border:1px solid #d0d7de}
-            .mid-pre-inline-msg.ok{color:#0a7a2b;border-color:#0a7a2b}
-            .mid-pre-inline-msg.err{color:#b00020;border-color:#b00020}
-
-            .faip-btn{font-size:14px;padding:8px 12px;border-radius:8px;border:1px solid #d0d7de;background:#fff;cursor:pointer}
-            .faip-btn-success{border-color:#0a7a2b;color:#0a7a2b}
-
-            .mid-pre-normalized{max-width:360px;white-space:normal;word-break:break-word}
-        ');
-
-        // JS (inline via registered empty handle)
-        wp_register_script(self::JS_HANDLE, false, [], '1.0.1', true);
-        wp_enqueue_script(self::JS_HANDLE);
-
-        wp_localize_script(self::JS_HANDLE, 'MID_PRE_AJAX', [
-            'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce'    => wp_create_nonce(self::NONCE_ACTION),
-            'action_resolve' => self::AJAX_ACTION_RESOLVE,
+        wp_localize_script('dotfiler-ai-photos-page-js', 'MID_PRE_AJAX', [
+            'ajax_url'            => admin_url('admin-ajax.php'),
+            'nonce'               => wp_create_nonce(self::NONCE_ACTION),
+            'action_resolve'      => self::AJAX_ACTION_RESOLVE,
+            'action_bulk_resolve' => self::AJAX_ACTION_BULK_RESOLVE,
+            'action_bulk_refund'  => self::AJAX_ACTION_BULK_REFUND,
         ]);
-
-        wp_add_inline_script(self::JS_HANDLE, $this->inline_js());
     }
 
-    private function inline_js(): string {
-        return <<<JS
-(function(){
-  const \$ = (sel, root=document) => root.querySelector(sel);
-  const \$\$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
-
-  const root = \$('#mid-pre');
-  if (!root) return;
-
-  // (Optional) enforce numeric only on inputs
-  const onlyDigits = (el, maxLen) => {
-    if (!el) return;
-    el.addEventListener('input', () => {
-      el.value = String(el.value || '').replace(/\\D+/g,'').slice(0, maxLen || 99);
-    });
-  };
-  onlyDigits(\$('#midPreCardFirst6'), 6);
-  onlyDigits(\$('#midPreCardLast4'), 4);
-
-  // Check all
-  const all = \$('#midPreCheckAll');
-  if (all) {
-    all.addEventListener('change', function(){
-      const boxes = \$\$('#mid-pre tbody input[type="checkbox"][data-guid]');
-      boxes.forEach(b => { b.checked = all.checked; });
-    });
-  }
-
-  // Resolve modal elements
-  const modal = \$('#midPreResolveModal');
-  const btnClose = \$('#midPreResolveClose');
-  const btnCancel = \$('#midPreResolveCancel');
-  const btnConfirm = \$('#midPreResolveConfirm');
-  const elReason = \$('#midPreResolveReason');
-  const elOtherWrap = \$('#midPreOtherWrap');
-  const elNote = \$('#midPreResolveNote');
-  const statusbar = \$('#midPreResolveStatusbar');
-  const title = \$('#midPreResolveTitle');
-
-  let currentGuid = '';
-
-  const setStatus = (type, text) => {
-    if (!statusbar) return;
-    if (!text) { statusbar.innerHTML = ''; return; }
-    statusbar.innerHTML = '<span class="mid-pre-inline-msg ' + (type || '') + '">' + String(text) + '</span>';
-  };
-
-  const updateOtherVisibility = () => {
-    const v = (elReason && elReason.value) ? elReason.value : '';
-    const isOther = (v === 'other');
-    if (elOtherWrap) elOtherWrap.style.display = isOther ? 'block' : 'none';
-    if (!isOther && elNote) elNote.value = '';
-  };
-
-  const updateConfirmState = () => {
-    if (!btnConfirm) return;
-    const v = (elReason && elReason.value) ? elReason.value : '';
-    if (!v) { btnConfirm.disabled = true; return; }
-    if (v === 'other') {
-      const note = (elNote && elNote.value) ? String(elNote.value).trim() : '';
-      btnConfirm.disabled = (note.length < 1);
-      return;
-    }
-    btnConfirm.disabled = false;
-  };
-
-  const openModal = (guid) => {
-    currentGuid = guid || '';
-    if (title) title.textContent = currentGuid ? ('Resolve ' + currentGuid) : 'Resolve';
-    if (elReason) elReason.value = '';
-    if (elNote) elNote.value = '';
-    if (btnConfirm) btnConfirm.disabled = true;
-    if (elOtherWrap) elOtherWrap.style.display = 'none';
-    setStatus('', '');
-    if (modal) { modal.classList.add('is-open'); modal.setAttribute('aria-hidden','false'); }
-  };
-
-  const closeModal = () => {
-    currentGuid = '';
-    setStatus('', '');
-    if (modal) { modal.classList.remove('is-open'); modal.setAttribute('aria-hidden','true'); }
-  };
-
-  if (btnClose) btnClose.addEventListener('click', closeModal);
-  if (btnCancel) btnCancel.addEventListener('click', closeModal);
-  if (modal) {
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) closeModal();
-    });
-  }
-
-  if (elReason) {
-    elReason.addEventListener('change', () => {
-      setStatus('', '');
-      updateOtherVisibility();
-      updateConfirmState();
-    });
-  }
-  if (elNote) {
-    elNote.addEventListener('input', () => {
-      updateConfirmState();
-    });
-  }
-
-  // Row action: Resolve
-  root.addEventListener('click', (e) => {
-    const t = e.target;
-    if (!t || !t.matches('[data-action="approve_row"]')) return;
-
-    e.preventDefault();
-    const guid = t.getAttribute('data-guid') || '';
-    if (!guid) { alert('Missing prevention_guid'); return; }
-    openModal(guid);
-  });
-
-  const markRowResolved = (guid) => {
-    if (!guid) return;
-    const btn = root.querySelector('[data-action="approve_row"][data-guid="' + CSS.escape(guid) + '"]');
-    if (!btn) return;
-
-    const cell = btn.closest('td');
-    if (!cell) return;
-
-    btn.style.display = 'none';
-
-    let badge = cell.querySelector('.mid-pre-inline-msg.ok[data-resolved="1"]');
-    if (!badge) {
-      badge = document.createElement('span');
-      badge.className = 'mid-pre-inline-msg ok';
-      badge.setAttribute('data-resolved','1');
-      badge.textContent = 'Resolved';
-      cell.appendChild(badge);
-    }
-  };
-
-  // Confirm resolve -> AJAX
-  if (btnConfirm) {
-    btnConfirm.addEventListener('click', async () => {
-      if (!currentGuid) { setStatus('err', 'Missing prevention_guid'); return; }
-
-      const resolve_reason = (elReason && elReason.value) ? elReason.value : '';
-      if (!resolve_reason) { setStatus('err', 'Select resolve reason'); return; }
-
-      const note = (elNote && elNote.value) ? String(elNote.value).trim() : '';
-      if (resolve_reason === 'other' && !note) { setStatus('err', 'Write note for "Other action"'); return; }
-
-      btnConfirm.disabled = true;
-      setStatus('', 'Saving…');
-
-      try {
-        const fd = new FormData();
-        fd.append('action', (MID_PRE_AJAX && MID_PRE_AJAX.action_resolve) ? MID_PRE_AJAX.action_resolve : 'midigator_resolve_prevention');
-        fd.append('_ajax_nonce', (MID_PRE_AJAX && MID_PRE_AJAX.nonce) ? MID_PRE_AJAX.nonce : '');
-        fd.append('prevention_guid', currentGuid);
-        fd.append('resolve_reason', resolve_reason);
-        fd.append('note', note);
-
-        const res = await fetch((MID_PRE_AJAX && MID_PRE_AJAX.ajax_url) ? MID_PRE_AJAX.ajax_url : window.ajaxurl, {
-          method: 'POST',
-          credentials: 'same-origin',
-          body: fd
-        });
-
-        const json = await res.json().catch(() => ({}));
-
-        if (json && json.success) {
-          // success -> close modal and update row UI
-          closeModal();
-          markRowResolved(currentGuid);
-        } else {
-          const msg = (json && json.data && json.data.message) ? json.data.message : 'Resolve failed';
-          setStatus('err', msg);
-        }
-      } catch (err) {
-        setStatus('err', (err && err.message) ? err.message : 'Request failed');
-      } finally {
-        // keep disabled state accurate after modal close/open, but safe to re-enable here
-        btnConfirm.disabled = false;
-        updateConfirmState();
-      }
-    });
-  }
-})();
-JS;
-    }
-
-    /**
-     * Backend resolve handler
-     * Receives: prevention_guid, resolve_reason, note
-     */
     public function ajax_resolve_prevention(): void {
         check_ajax_referer(self::NONCE_ACTION, '_ajax_nonce');
 
@@ -537,11 +313,8 @@ JS;
 
         try {
             $prevHelper = new FrmMidigatorPreventionHelper();
-
-            // note can be empty for non-other reasons (ok)
             $res = $prevHelper->resolvePreventionAlert($preventionGuid, $reason, $note);
 
-            // Normalize response
             $ok = false;
             if (is_array($res) && array_key_exists('ok', $res)) {
                 $ok = (bool) $res['ok'];
@@ -552,7 +325,6 @@ JS;
             }
 
             if (!$ok) {
-                // Best-effort message extraction
                 $msg = 'Resolve failed';
                 if (is_array($res)) {
                     if (!empty($res['error']) && is_string($res['error'])) $msg = $res['error'];
@@ -568,7 +340,7 @@ JS;
             wp_send_json_success([
                 'ok' => true,
                 'prevention_guid' => $preventionGuid,
-                'resolve_reason' => $reason,
+                'resolve_reason'  => $reason,
             ]);
 
         } catch (\Throwable $e) {
@@ -576,14 +348,58 @@ JS;
         }
     }
 
-    /**
-     * Server-side list fetch
-     */
+    public function ajax_bulk_resolve_prevention(): void {
+        check_ajax_referer(self::NONCE_ACTION, '_ajax_nonce');
+
+        $id             = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+        $preventionGuid = isset($_POST['prevention_guid']) ? sanitize_text_field((string) $_POST['prevention_guid']) : '';
+        $reason         = isset($_POST['resolve_reason']) ? sanitize_text_field((string) $_POST['resolve_reason']) : '';
+
+        if ($id <= 0) {
+            wp_send_json_error([ 'message' => 'Missing row id' ], 400);
+        }
+
+        if ($preventionGuid === '') {
+            wp_send_json_error([ 'message' => 'Missing prevention_guid' ], 400);
+        }
+
+        if ($reason === '') {
+            wp_send_json_error([ 'message' => 'Missing resolve_reason' ], 400);
+        }
+
+        wp_send_json_success([
+            'ok'              => true,
+            'id'              => $id,
+            'prevention_guid' => $preventionGuid,
+            'resolve_reason'  => $reason,
+        ]);
+    }
+
+    public function ajax_bulk_full_refund_prevention(): void {
+        check_ajax_referer(self::NONCE_ACTION, '_ajax_nonce');
+
+        $id             = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+        $preventionGuid = isset($_POST['prevention_guid']) ? sanitize_text_field((string) $_POST['prevention_guid']) : '';
+
+        if ($id <= 0) {
+            wp_send_json_error([ 'message' => 'Missing row id' ], 400);
+        }
+
+        if ($preventionGuid === '') {
+            wp_send_json_error([ 'message' => 'Missing prevention_guid' ], 400);
+        }
+
+        wp_send_json_success([
+            'ok'              => true,
+            'id'              => $id,
+            'prevention_guid' => $preventionGuid,
+        ]);
+    }
+
     private function safe_get_list(array $filters, array $opts): array {
         try {
-
             $model = new FrmMidigatorPreventionModel();
-            $rows = $model->getList( $filters, $opts );
+            $rows = $model->getList($filters, $opts);
             if (!is_array($rows)) $rows = [];
 
             return $rows;
@@ -634,18 +450,12 @@ JS;
             if (is_object($item)) $item = (array) $item;
             if (!is_array($item)) continue;
 
-            // GUID (required for resolve)
+            $id   = isset($item['id']) ? (int) $item['id'] : 0;
             $guid = isset($item['prevention_guid']) ? (string) $item['prevention_guid'] : '';
-            if ($guid === '') {
-                // Without guid we cannot resolve; still render but disable button
-                $guid = '';
-            }
 
-            // Requested columns
-            $caseId     = isset($item['prevention_case_number']) ? (string) $item['prevention_case_number'] : '';
             $receivedOn = $fmt_dt($item['created_at'] ?? ($item['prevention_timestamp'] ?? ''));
             $txDate     = $fmt_dt($item['transaction_timestamp'] ?? '');
-            $prevTsRaw  = (string)($item['prevention_timestamp'] ?? '');
+            $prevTsRaw  = (string) ($item['prevention_timestamp'] ?? '');
             $expiration = $calc_exp($prevTsRaw);
 
             $amount   = isset($item['amount']) ? (string) $item['amount'] : '';
@@ -659,8 +469,13 @@ JS;
 
             $rowResolved = !empty($item['is_resolved']);
 
-            // Fallback display
-            if ($caseId === '') $caseId = '—';
+            $orders = [];
+            if (isset($item['_entities']['orders']) && is_array($item['_entities']['orders'])) {
+                $orders = $item['_entities']['orders'];
+            } elseif (isset($item['orders']) && is_array($item['orders'])) {
+                $orders = $item['orders'];
+            }
+
             if ($receivedOn === '') $receivedOn = '—';
             if ($txDate === '') $txDate = '—';
             if ($expiration === '') $expiration = '—';
@@ -673,26 +488,33 @@ JS;
 
             $btnDisabled = ($guid === '');
             ?>
-            <tr>
-                <td><input type="checkbox" data-guid="<?php echo esc_attr($guid); ?>" <?php echo $btnDisabled ? 'disabled' : ''; ?>></td>
+            <tr data-item-id="<?php echo esc_attr((string) $id); ?>" data-guid="<?php echo esc_attr($guid); ?>">
+                <td>
+                    <input
+                        type="checkbox"
+                        data-guid="<?php echo esc_attr($guid); ?>"
+                        data-item-id="<?php echo esc_attr((string) $id); ?>"
+                        <?php echo $btnDisabled ? 'disabled' : ''; ?>
+                    >
+                </td>
 
                 <td><?php echo esc_html($receivedOn); ?></td>
                 <td><?php echo esc_html($txDate); ?></td>
                 <td><?php echo esc_html($expiration); ?></td>
-
                 <td><?php echo esc_html($amount . ' ' . $currency); ?></td>
-
                 <td><?php echo esc_html($bin); ?></td>
                 <td><?php echo esc_html($last4); ?></td>
-
                 <td><?php echo esc_html($arn); ?></td>
                 <td class="mid-pre-normalized"><?php echo esc_html($descriptor); ?></td>
 
                 <td>
-                <td>
                     <?php if (!$rowResolved): ?>
+                        
+                    <?php else: ?>
+                        <span class="mid-pre-inline-msg ok" data-result="resolved">Resolved</span>
+                    <?php endif; ?>
 
-                        <button
+                    <button
                             class="faip-btn faip-btn-success"
                             data-action="approve_row"
                             data-guid="<?php echo esc_attr($guid); ?>"
@@ -700,10 +522,24 @@ JS;
                             <?php echo $btnDisabled ? 'disabled' : ''; ?>
                         >Resolve</button>
 
-                    <?php else: ?>
+                    <?php if (!empty($orders)): ?>
+                        <div class="mid-pre-orders">
+                            <div class="mid-pre-orders-title">Related orders</div>
+                            <?php foreach ($orders as $o):
+                                if (is_object($o)) $o = (array) $o;
+                                if (!is_array($o)) continue;
 
-                        
-                       
+                                $orderId = isset($o['item_id']) ? (int) $o['item_id'] : 0;
+                                if ($orderId <= 0) continue;
+
+                                $refundUrl = add_query_arg(['id' => $orderId], '/orders/payment-refund/');
+                                ?>
+                                <div class="mid-pre-order-row">
+                                    <span class="mid-pre-order-id">#<?php echo esc_html((string) $orderId); ?></span>
+                                    <a class="mid-pre-order-link" href="<?php echo esc_url($refundUrl); ?>" target="_blank" rel="noopener noreferrer">Refund</a>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
                     <?php endif; ?>
                 </td>
             </tr>
