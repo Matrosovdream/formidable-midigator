@@ -7,7 +7,9 @@
   
     const ajaxCfg = window.MID_PRE_AJAX || {};
   
-    // enforce numeric only on inputs
+    // --------------------------------------------------
+    // Helpers
+    // --------------------------------------------------
     const onlyDigits = (el, maxLen) => {
       if (!el) return;
       el.addEventListener('input', () => {
@@ -30,7 +32,8 @@
       fd.append('_ajax_nonce', ajaxCfg.nonce || '');
   
       Object.keys(payload || {}).forEach((key) => {
-        fd.append(key, payload[key] == null ? '' : String(payload[key]));
+        const val = payload[key];
+        fd.append(key, val == null ? '' : String(val));
       });
   
       const res = await fetch(ajaxCfg.ajax_url || window.ajaxurl, {
@@ -43,6 +46,22 @@
     };
   
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  
+    const formatRefundText = (payment) => {
+      if (!payment || typeof payment !== 'object') {
+        return 'To refund: —';
+      }
+  
+      const refunded = payment.refunded_amount != null && payment.refunded_amount !== ''
+        ? String(payment.refunded_amount)
+        : '0';
+  
+      const full = payment.full_amount != null && payment.full_amount !== ''
+        ? String(payment.full_amount)
+        : '0';
+  
+      return 'To refund: ' + refunded + '/' + full;
+    };
   
     onlyDigits($('#midPreCardFirst6'), 6);
     onlyDigits($('#midPreCardLast4'), 4);
@@ -77,6 +96,13 @@
           };
         })
         .filter((row) => row.prevention_guid && row.id > 0);
+    };
+  
+    const getCheckedOrderCheckboxesForRow = (row) => {
+      const tr = row?.tr || null;
+      if (!tr) return [];
+  
+      return $$('.mid-pre-order-check:checked[data-order-id]', tr);
     };
   
     const syncCheckAllState = () => {
@@ -145,6 +171,57 @@
         refreshBulkUiState();
       }
     });
+  
+    // --------------------------------------------------
+    // Confirm modal for top actions
+    // --------------------------------------------------
+    const confirmModal = $('#midPreConfirmModal');
+    const confirmTitle = $('#midPreConfirmTitle');
+    const confirmText = $('#midPreConfirmText');
+    const confirmYes = $('#midPreConfirmYes');
+    const confirmNo = $('#midPreConfirmNo');
+    const confirmClose = $('#midPreConfirmClose');
+  
+    let confirmResolve = null;
+  
+    const openConfirm = ({ title, text, onYes }) => {
+      confirmResolve = onYes || null;
+  
+      if (confirmTitle) confirmTitle.textContent = title || 'Are you sure?';
+      if (confirmText) confirmText.textContent = text || 'Please confirm action.';
+  
+      if (confirmModal) {
+        confirmModal.classList.add('is-open');
+        confirmModal.setAttribute('aria-hidden', 'false');
+      }
+    };
+  
+    const closeConfirm = () => {
+      confirmResolve = null;
+      if (confirmModal) {
+        confirmModal.classList.remove('is-open');
+        confirmModal.setAttribute('aria-hidden', 'true');
+      }
+    };
+  
+    if (confirmClose) confirmClose.addEventListener('click', closeConfirm);
+    if (confirmNo) confirmNo.addEventListener('click', closeConfirm);
+  
+    if (confirmYes) {
+      confirmYes.addEventListener('click', async () => {
+        const cb = confirmResolve;
+        closeConfirm();
+        if (typeof cb === 'function') {
+          await cb();
+        }
+      });
+    }
+  
+    if (confirmModal) {
+      confirmModal.addEventListener('click', (e) => {
+        if (e.target === confirmModal) closeConfirm();
+      });
+    }
   
     // --------------------------------------------------
     // Resolve modal elements
@@ -258,22 +335,9 @@
       });
     }
   
-    // Row action: Resolve
-    root.addEventListener('click', (e) => {
-      const t = e.target;
-      if (!t || !t.matches('[data-action="approve_row"]')) return;
-  
-      e.preventDefault();
-  
-      const guid = t.getAttribute('data-guid') || '';
-      if (!guid) {
-        alert('Missing prevention_guid');
-        return;
-      }
-  
-      openModal(guid);
-    });
-  
+    // --------------------------------------------------
+    // Row helpers
+    // --------------------------------------------------
     const findRowByGuid = (guid) => {
       if (!guid) return null;
   
@@ -338,7 +402,15 @@
       if (!cell) return;
   
       hideResolveButton(cell);
-      ensureBadge(cell, 'Resolved', 'ok', 'resolved');
+  
+      let box = cell.querySelector('.mid-pre-resolved-box[data-result="resolved"]');
+      if (!box) {
+        box = document.createElement('div');
+        box.className = 'mid-pre-resolved-box';
+        box.setAttribute('data-result', 'resolved');
+        box.innerHTML = '<div class="mid-pre-resolved-line">Resolved</div>';
+        cell.appendChild(box);
+      }
     };
   
     const markRowRefunded = (row) => {
@@ -347,11 +419,146 @@
       const cell = findActionCell(row);
       if (!cell) return;
   
-      hideResolveButton(cell);
       ensureBadge(cell, 'Refunded', 'ok', 'refunded');
     };
   
+    // --------------------------------------------------
+    // Order refund UI updates
+    // --------------------------------------------------
+    const updateOrderBlockFromResponse = (orderId, orderData) => {
+      if (!orderId || !orderData) return;
+  
+      let orderRow = null;
+      try {
+        orderRow = root.querySelector('.mid-pre-order-row[data-order-id="' + CSS.escape(String(orderId)) + '"]');
+      } catch (e) {
+        orderRow = root.querySelector('.mid-pre-order-row[data-order-id]');
+      }
+  
+      if (!orderRow) return;
+  
+      const payment = orderData.payment || {};
+  
+      const statusEl = $('.mid-pre-order-payment-status', orderRow);
+      const refundEl = $('.mid-pre-order-payment-refund', orderRow);
+      const actionBtn = $('.mid-pre-order-refund-btn', orderRow);
+      const statusBadge = $('.mid-pre-order-refund-result', orderRow);
+  
+      if (statusEl) {
+        statusEl.textContent = 'Payment: ' + (payment.status != null && payment.status !== '' ? String(payment.status) : '—');
+      }
+  
+      if (refundEl) {
+        refundEl.textContent = formatRefundText(payment);
+      }
+  
+      if (actionBtn) {
+        const refundedAmount = parseFloat(payment.refunded_amount || 0);
+        const fullAmount = parseFloat(payment.full_amount || 0);
+  
+        if (!isNaN(refundedAmount) && !isNaN(fullAmount) && refundedAmount >= fullAmount && fullAmount > 0) {
+          actionBtn.disabled = true;
+        }
+      }
+  
+      if (statusBadge) {
+        statusBadge.textContent = 'Refunded';
+        statusBadge.style.display = 'inline-block';
+      }
+    };
+  
+    const processSingleOrderRefund = async (orderId, buttonEl) => {
+      if (!orderId) return;
+  
+      const prevText = buttonEl ? buttonEl.textContent : '';
+      if (buttonEl) {
+        buttonEl.disabled = true;
+        buttonEl.textContent = 'Refunding...';
+      }
+  
+      try {
+        const json = await postFormData(
+          ajaxCfg.action_order_refund || 'midigator_related_order_refund',
+          { entry_id: orderId }
+        );
+  
+        if (json && json.success) {
+          const orderData = json.data && json.data.order_data ? json.data.order_data : null;
+          updateOrderBlockFromResponse(orderId, orderData);
+        } else {
+          const msg = json && json.data && json.data.message ? json.data.message : 'Refund failed';
+          alert(msg);
+        }
+      } catch (err) {
+        alert((err && err.message) ? err.message : 'Refund request failed');
+      } finally {
+        if (buttonEl) {
+          buttonEl.textContent = prevText || 'Refund';
+          const row = buttonEl.closest('.mid-pre-order-row');
+          const paymentStatus = $('.mid-pre-order-payment-status', row);
+          const paymentRefund = $('.mid-pre-order-payment-refund', row);
+  
+          const refundedFully = paymentRefund && /To refund:\s*([0-9.]+)\s*\/\s*([0-9.]+)/i.test(paymentRefund.textContent || '');
+          if (!refundedFully) {
+            buttonEl.disabled = false;
+          } else {
+            const m = (paymentRefund.textContent || '').match(/To refund:\s*([0-9.]+)\s*\/\s*([0-9.]+)/i);
+            if (m) {
+              const refunded = parseFloat(m[1] || '0');
+              const full = parseFloat(m[2] || '0');
+              buttonEl.disabled = !(isNaN(refunded) || isNaN(full)) && refunded >= full && full > 0;
+            } else {
+              buttonEl.disabled = false;
+            }
+          }
+        }
+      }
+    };
+  
+    // --------------------------------------------------
+    // Row action: Resolve
+    // --------------------------------------------------
+    root.addEventListener('click', (e) => {
+      const t = e.target;
+      if (!t) return;
+  
+      if (t.matches('[data-action="approve_row"]')) {
+        e.preventDefault();
+  
+        const guid = t.getAttribute('data-guid') || '';
+        if (!guid) {
+          alert('Missing prevention_guid');
+          return;
+        }
+  
+        openModal(guid);
+        return;
+      }
+  
+      if (t.matches('.mid-pre-order-refund-btn[data-order-id]')) {
+        e.preventDefault();
+  
+        const orderId = parseInt(t.getAttribute('data-order-id') || '0', 10) || 0;
+        if (!orderId) {
+          alert('Missing order id');
+          return;
+        }
+  
+        openConfirm({
+          title: 'Are you sure?',
+          text: 'Refund this related order?',
+          onYes: async () => {
+            await processSingleOrderRefund(orderId, t);
+          }
+        });
+  
+        return;
+      }
+    });
+  
+    // --------------------------------------------------
     // Confirm resolve -> AJAX
+    // --------------------------------------------------
     if (btnConfirm) {
       btnConfirm.addEventListener('click', async () => {
         if (!currentGuid) {
@@ -402,6 +609,9 @@
       });
     }
   
+    // --------------------------------------------------
+    // Bulk processor
+    // --------------------------------------------------
     const setBulkBusy = (state) => {
       bulkBusy = !!state;
   
@@ -410,6 +620,14 @@
   
       getCheckboxes().forEach((cb) => {
         cb.disabled = bulkBusy;
+      });
+  
+      $$('.mid-pre-order-check').forEach((cb) => {
+        cb.disabled = bulkBusy;
+      });
+  
+      $$('.mid-pre-order-refund-btn').forEach((btn) => {
+        btn.disabled = bulkBusy || btn.disabled;
       });
   
       if (bulkResolveBtn) {
@@ -421,7 +639,7 @@
       }
     };
   
-    const processBulk = async (mode) => {
+    const processBulkResolve = async () => {
       if (bulkBusy) return;
   
       const rows = getSelectedRows();
@@ -431,7 +649,7 @@
       }
   
       const resolveReason = bulkReason ? String(bulkReason.value || '') : '';
-      if (mode === 'resolve' && !resolveReason) {
+      if (!resolveReason) {
         setBulkStatus('err', 'Select resolve reason', 0);
         return;
       }
@@ -446,40 +664,22 @@
           const row = rows[i];
           const progress = Math.round((i / rows.length) * 100);
   
-          setBulkStatus(
-            '',
-            (mode === 'resolve' ? 'Resolving ' : 'Refunding ') + (i + 1) + ' of ' + rows.length + '…',
-            progress
-          );
+          setBulkStatus('', 'Resolving ' + (i + 1) + ' of ' + rows.length + '…', progress);
   
           try {
-            const actionName = mode === 'resolve'
-              ? (ajaxCfg.action_bulk_resolve || 'midigator_bulk_resolve_prevention')
-              : (ajaxCfg.action_bulk_refund || 'midigator_bulk_full_refund_prevention');
-  
-            const payload = {
-              id: row.id,
-              prevention_guid: row.prevention_guid
-            };
-  
-            if (mode === 'resolve') {
-              payload.resolve_reason = resolveReason;
-            }
-  
-            const json = await postFormData(actionName, payload);
+            const json = await postFormData(
+              ajaxCfg.action_bulk_resolve || 'midigator_bulk_resolve_prevention',
+              {
+                id: row.id,
+                prevention_guid: row.prevention_guid,
+                resolve_reason: resolveReason
+              }
+            );
   
             if (json && json.success) {
               successCount++;
-  
-              if (mode === 'resolve') {
-                markRowResolved(row);
-              } else {
-                markRowRefunded(row);
-              }
-  
-              if (row.checkbox) {
-                row.checkbox.checked = false;
-              }
+              markRowResolved(row);
+              if (row.checkbox) row.checkbox.checked = false;
             } else {
               failCount++;
             }
@@ -492,17 +692,111 @@
         }
   
         if (failCount < 1) {
-          setBulkStatus(
-            'ok',
-            (mode === 'resolve' ? 'Resolve' : 'Refund') + ' completed. ' + successCount + '/' + rows.length + ' processed.',
-            100
-          );
+          setBulkStatus('ok', 'Resolve completed. ' + successCount + '/' + rows.length + ' processed.', 100);
         } else {
-          setBulkStatus(
-            'err',
-            (mode === 'resolve' ? 'Resolve' : 'Refund') + ' finished with errors. Success: ' + successCount + ', Failed: ' + failCount + '.',
-            100
-          );
+          setBulkStatus('err', 'Resolve finished with errors. Success: ' + successCount + ', Failed: ' + failCount + '.', 100);
+        }
+      } finally {
+        setBulkBusy(false);
+        refreshBulkUiState();
+      }
+    };
+  
+    const processBulkRefund = async () => {
+      if (bulkBusy) return;
+  
+      const rows = getSelectedRows();
+      if (!rows.length) {
+        setBulkStatus('err', 'Select at least one row', 0);
+        return;
+      }
+  
+      const jobs = [];
+  
+      rows.forEach((row) => {
+        const checkedOrders = getCheckedOrderCheckboxesForRow(row);
+  
+        if (checkedOrders.length) {
+          checkedOrders.forEach((orderCb) => {
+            const orderId = parseInt(orderCb.getAttribute('data-order-id') || '0', 10) || 0;
+            if (orderId > 0) {
+              jobs.push({
+                type: 'order',
+                row,
+                orderId,
+                checkbox: orderCb
+              });
+            }
+          });
+        } else {
+          jobs.push({
+            type: 'row',
+            row
+          });
+        }
+      });
+  
+      if (!jobs.length) {
+        setBulkStatus('err', 'Nothing selected for refund', 0);
+        return;
+      }
+  
+      setBulkBusy(true);
+  
+      let successCount = 0;
+      let failCount = 0;
+  
+      try {
+        for (let i = 0; i < jobs.length; i++) {
+          const job = jobs[i];
+          const progress = Math.round((i / jobs.length) * 100);
+  
+          setBulkStatus('', 'Refunding ' + (i + 1) + ' of ' + jobs.length + '…', progress);
+  
+          try {
+            if (job.type === 'order') {
+              const json = await postFormData(
+                ajaxCfg.action_order_refund || 'midigator_related_order_refund',
+                { entry_id: job.orderId }
+              );
+  
+              if (json && json.success) {
+                successCount++;
+                const orderData = json.data && json.data.order_data ? json.data.order_data : null;
+                updateOrderBlockFromResponse(job.orderId, orderData);
+                if (job.checkbox) job.checkbox.checked = false;
+              } else {
+                failCount++;
+              }
+            } else {
+              const json = await postFormData(
+                ajaxCfg.action_bulk_refund || 'midigator_bulk_full_refund_prevention',
+                {
+                  id: job.row.id,
+                  prevention_guid: job.row.prevention_guid
+                }
+              );
+  
+              if (json && json.success) {
+                successCount++;
+                markRowRefunded(job.row);
+                if (job.row.checkbox) job.row.checkbox.checked = false;
+              } else {
+                failCount++;
+              }
+            }
+          } catch (err) {
+            failCount++;
+          }
+  
+          refreshBulkUiState();
+          await sleep(80);
+        }
+  
+        if (failCount < 1) {
+          setBulkStatus('ok', 'Refund completed. ' + successCount + '/' + jobs.length + ' processed.', 100);
+        } else {
+          setBulkStatus('err', 'Refund finished with errors. Success: ' + successCount + ', Failed: ' + failCount + '.', 100);
         }
       } finally {
         setBulkBusy(false);
@@ -511,14 +805,38 @@
     };
   
     if (bulkResolveBtn) {
-      bulkResolveBtn.addEventListener('click', async () => {
-        await processBulk('resolve');
+      bulkResolveBtn.addEventListener('click', () => {
+        const rows = getSelectedRows();
+        if (!rows.length) {
+          setBulkStatus('err', 'Select at least one row', 0);
+          return;
+        }
+  
+        openConfirm({
+          title: 'Are you sure?',
+          text: 'Resolve selected rows?',
+          onYes: async () => {
+            await processBulkResolve();
+          }
+        });
       });
     }
   
     if (bulkRefundBtn) {
-      bulkRefundBtn.addEventListener('click', async () => {
-        await processBulk('refund');
+      bulkRefundBtn.addEventListener('click', () => {
+        const rows = getSelectedRows();
+        if (!rows.length) {
+          setBulkStatus('err', 'Select at least one row', 0);
+          return;
+        }
+  
+        openConfirm({
+          title: 'Are you sure?',
+          text: 'Run refund for selected rows/orders?',
+          onYes: async () => {
+            await processBulkRefund();
+          }
+        });
       });
     }
   

@@ -295,6 +295,69 @@
   text-decoration: underline;
 }
 
+.mid-pre-resolved-box{
+  margin-top: 2px;
+  padding: 8px 10px;
+  border: 1px solid #0a7a2b;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.mid-pre-resolved-line{
+  font-size: 12px;
+  font-weight: 600;
+  color: #0a7a2b;
+  line-height: 1.35;
+}
+
+.mid-pre-resolved-desc{
+  margin-top: 4px;
+  font-size: 12px;
+  color: #57606a;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.mid-pre-order-main{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.mid-pre-order-check-wrap{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:0;
+  cursor:pointer;
+}
+
+.mid-pre-order-meta{
+  margin-top:6px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.mid-pre-order-payment-status,
+.mid-pre-order-payment-refund{
+  font-size:12px;
+  color:#57606a;
+  line-height:1.35;
+}
+
+.mid-pre-order-actions{
+  margin-top:8px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.mid-pre-confirm-modal{
+  max-width:420px;
+}
+
 @media (max-width: 900px) {
   .mid-pre-head {
     flex-direction: column;
@@ -309,3 +372,4 @@
     max-width: 100%;
   }
 }
+
