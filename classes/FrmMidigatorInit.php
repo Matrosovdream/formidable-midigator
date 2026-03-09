@@ -47,6 +47,7 @@ class FrmMidigatorInit {
         // Helpers
         require_once FRM_MDG_BASE_URL.'/classes/helpers/FrmMidigatorEventHelper.php';
         require_once FRM_MDG_BASE_URL.'/classes/helpers/FrmMidigatorPreventionHelper.php';
+        require_once FRM_MDG_BASE_URL.'/classes/helpers/FrmMidigatorShortcodeHelper.php';
 
     }
 
@@ -92,6 +93,8 @@ class FrmMidigatorInit {
 
         // Models
         require_once FRM_MDG_BASE_URL.'/classes/models/FrmMidigatorPreventionModel.php';
+        require_once FRM_MDG_BASE_URL.'/classes/models/FrmMidigatorResolveModel.php';
+        require_once FRM_MDG_BASE_URL.'/classes/models/FrmMidigatorResolveHistoryModel.php';
 
     }
 
