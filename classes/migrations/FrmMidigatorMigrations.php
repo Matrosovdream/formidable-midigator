@@ -25,10 +25,7 @@ class FrmMidigatorMigrations {
 
         $sql = [];
 
-        // Existing + altered table
         $sql[] = self::sql_midigator_preventions( $prefix, $charset_collate );
-
-        // New tables
         $sql[] = self::sql_midigator_resolves( $prefix, $charset_collate );
         $sql[] = self::sql_midigator_resolve_history( $prefix, $charset_collate );
 
@@ -39,7 +36,7 @@ class FrmMidigatorMigrations {
         update_option( self::VERSION_OPTION, self::DB_VERSION );
     }
 
-    /** Optional: call this on 'plugins_loaded' to auto-upgrade when version changes */
+    /** Auto upgrade */
     public static function maybe_upgrade(): void {
         $installed = get_option( self::VERSION_OPTION );
         if ( $installed !== self::DB_VERSION ) {
@@ -48,13 +45,267 @@ class FrmMidigatorMigrations {
     }
 
     /**
-     * frm_midigator_preventions
-     *
-     * Added:
-     *  - is_resolved tinyint(1) NOT NULL DEFAULT 0
-     *  - created_at / updated_at auto-filling timestamps
+     * EXPORT DB → JSON files
      */
-    private static function sql_midigator_preventions( string $prefix, string $collate ): string {
+    public static function exportData(bool $truncate = true): array {
+
+        global $wpdb;
+    
+        $dir = self::get_import_dir();
+        self::ensure_import_path();
+
+        $result = [
+            'success' => true,
+            'dir'     => $dir,
+            'tables'  => [],
+            'errors'  => [],
+        ];
+    
+        foreach ( self::get_table_names() as $table ) {
+    
+            $file = $dir . $table . '.json';
+    
+            if (!file_exists($file)) {
+    
+                file_put_contents($file, json_encode([
+                    'table' => $table,
+                    'rows'  => []
+                ], JSON_PRETTY_PRINT));
+    
+                $result['tables'][$table] = [
+                    'rows'          => 0,
+                    'file'          => $file,
+                    'created_empty' => true,
+                ];
+    
+                continue;
+            }
+    
+            $content = file_get_contents($file);
+            $decoded = json_decode($content, true);
+    
+            if (!is_array($decoded) || !isset($decoded['rows']) || !is_array($decoded['rows'])) {
+                $result['success'] = false;
+                $result['errors'][$table] = 'Invalid JSON structure.';
+                continue;
+            }
+    
+            $rows = $decoded['rows'];
+    
+            if ($truncate) {
+                $wpdb->query("TRUNCATE TABLE `{$table}`");
+    
+                if ($wpdb->last_error) {
+                    $result['success'] = false;
+                    $result['errors'][$table] = 'TRUNCATE failed: ' . $wpdb->last_error;
+                    continue;
+                }
+            }
+    
+            $inserted = 0;
+    
+            foreach ($rows as $row) {
+    
+                if (!is_array($row) || empty($row)) {
+                    continue;
+                }
+    
+                if (array_key_exists('created_at', $row) && ($row['created_at'] === null || $row['created_at'] === '')) {
+                    unset($row['created_at']);
+                }
+    
+                if (array_key_exists('updated_at', $row) && ($row['updated_at'] === null || $row['updated_at'] === '')) {
+                    unset($row['updated_at']);
+                }
+
+                echo "<pre>"; print_r($row); echo "</pre>";
+    
+                $formats = self::build_formats_from_row($row);
+                $ok = $wpdb->insert($table, $row, $formats);
+    
+                if ($ok === false) {
+                    $result['success'] = false;
+                    //$result['errors'][$table][] = $wpdb->last_error;
+                    continue;
+                }
+    
+                $inserted++;
+            }
+    
+            $result['tables'][$table] = [
+                'rows' => $inserted,
+                'file' => $file,
+            ];
+        }
+    
+        return $result;
+    }
+
+    /**
+     * IMPORT JSON → DB
+     */
+    public static function importData(bool $truncate = true): array {
+
+        global $wpdb;
+
+        $dir = self::get_import_dir();
+        self::ensure_import_path();
+
+        $result = [
+            'success' => true,
+            'dir'     => $dir,
+            'tables'  => [],
+            'errors'  => [],
+        ];
+
+        foreach ( self::get_table_names() as $table ) {
+
+            $file = $dir . $table . '.json';
+
+            if (!file_exists($file)) {
+
+                file_put_contents($file, json_encode([
+                    'table'=>$table,
+                    'rows'=>[]
+                ], JSON_PRETTY_PRINT));
+
+                $result['tables'][$table] = [
+                    'rows'=>0,
+                    'file'=>$file,
+                    'created_empty'=>true
+                ];
+
+                continue;
+            }
+
+            $content = file_get_contents($file);
+
+            $decoded = json_decode($content, true);
+
+            if (!is_array($decoded) || empty($decoded['rows'])) {
+                continue;
+            }
+
+            $rows = $decoded['rows'];
+
+            if ($truncate) {
+                $wpdb->query("TRUNCATE TABLE `{$table}`");
+            }
+
+            $inserted = 0;
+
+            foreach ($rows as $row) {
+
+                if (!is_array($row)) {
+                    continue;
+                }
+
+                $formats = self::build_formats_from_row($row);
+
+                $ok = $wpdb->insert($table, $row, $formats);
+
+                // Show error
+                $wpdb_error = $wpdb->last_error;
+                if ($wpdb_error) {
+                    $result['success'] = false;
+                    $result['errors'][$table][] = $wpdb_error;
+                }
+
+                if ($ok !== false) {
+                    $inserted++;
+                }
+            }
+
+            $result['tables'][$table] = [
+                'rows'=>$inserted,
+                'file'=>$file
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Ensure migrations/imports directory exists
+     */
+    private static function ensure_import_path(): void {
+
+        $base = trailingslashit(FRM_MDG_BASE_URL);
+
+        $dirs = [
+            $base . 'migrations',
+            $base . 'migrations/imports'
+        ];
+
+        foreach ($dirs as $dir) {
+
+            if (!file_exists($dir)) {
+                wp_mkdir_p($dir);
+            }
+
+            if (!is_dir($dir)) {
+                throw new Exception("Cannot create directory: {$dir}");
+            }
+
+            if (!is_writable($dir)) {
+                throw new Exception("Directory not writable: {$dir}");
+            }
+        }
+    }
+
+    /**
+     * Import folder path
+     */
+    private static function get_import_dir(): string {
+        return trailingslashit( FRM_MDG_BASE_URL ) . 'migrations/imports/';
+    }
+
+    /**
+     * Tables list
+     */
+    private static function get_table_names(): array {
+
+        global $wpdb;
+
+        return [
+            $wpdb->prefix . 'frm_midigator_preventions',
+            $wpdb->prefix . 'frm_midigator_resolves',
+            $wpdb->prefix . 'frm_midigator_resolve_history',
+        ];
+    }
+
+    /**
+     * Detect formats for insert
+     */
+    private static function build_formats_from_row(array $row): array {
+
+        $formats = [];
+
+        foreach ($row as $value) {
+
+            if (is_int($value)) {
+                $formats[] = '%d';
+            }
+            elseif (is_float($value)) {
+                $formats[] = '%f';
+            }
+            elseif (is_numeric($value) && (string)(int)$value === (string)$value) {
+                $formats[] = '%d';
+            }
+            else {
+                $formats[] = '%s';
+            }
+        }
+
+        return $formats;
+    }
+
+    /**
+     * SQL TABLES
+     */
+
+    private static function sql_midigator_preventions(string $prefix, string $collate): string {
+
         $table = $prefix . 'frm_midigator_preventions';
 
         return "CREATE TABLE {$table} (
@@ -84,10 +335,10 @@ class FrmMidigatorMigrations {
 
             is_resolved tinyint(1) NOT NULL DEFAULT 0,
 
-            created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            created_at datetime NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-            PRIMARY KEY  (id),
+            PRIMARY KEY (id),
 
             UNIQUE KEY uniq_prevention_guid (prevention_guid),
 
@@ -104,13 +355,8 @@ class FrmMidigatorMigrations {
         ) {$collate};";
     }
 
-    /**
-     * frm_midigator_resolves
-     *
-     * - prevention_id: points to frm_midigator_preventions.id (no FK enforced by dbDelta)
-     * - prevention_guid: duplicated for quick lookup / resilience
-     */
-    private static function sql_midigator_resolves( string $prefix, string $collate ): string {
+    private static function sql_midigator_resolves(string $prefix, string $collate): string {
+
         $table = $prefix . 'frm_midigator_resolves';
 
         return "CREATE TABLE {$table} (
@@ -122,8 +368,8 @@ class FrmMidigatorMigrations {
             resolution_type varchar(80) NULL,
             description text NULL,
 
-            created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            created_at datetime NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
             PRIMARY KEY (id),
 
@@ -135,18 +381,8 @@ class FrmMidigatorMigrations {
         ) {$collate};";
     }
 
-    /**
-     * frm_midigator_resolve_history
-     *
-     * - resolve_id: points to frm_midigator_resolves.id
-     * - prevention_id: points to frm_midigator_preventions.id
-     * - user_id: WP user id who did the action
-     *
-     * Indexes:
-     * - resolve_id, prevention_id, user_id, prevention_guid, created_at
-     * - composite for common timelines/lookups
-     */
-    private static function sql_midigator_resolve_history( string $prefix, string $collate ): string {
+    private static function sql_midigator_resolve_history(string $prefix, string $collate): string {
+
         $table = $prefix . 'frm_midigator_resolve_history';
 
         return "CREATE TABLE {$table} (
@@ -161,8 +397,8 @@ class FrmMidigatorMigrations {
             resolution_type varchar(80) NULL,
             description text NULL,
 
-            created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            created_at datetime NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
             PRIMARY KEY (id),
 
@@ -180,5 +416,21 @@ class FrmMidigatorMigrations {
     }
 }
 
-// run maybe on plugins_loaded to auto-upgrade when version changes
-add_action( 'plugins_loaded', [ FrmMidigatorMigrations::class, 'maybe_upgrade' ] );
+add_action('plugins_loaded', [FrmMidigatorMigrations::class, 'maybe_upgrade']);
+
+
+
+// Init for calling import/export via URL param
+add_action( 'init', function() {
+
+    if ( isset( $_GET['midigator_import'] ) ) {
+        $result = FrmMidigatorMigrations::importData();
+        echo '<pre>'; print_r($result); echo '</pre>';
+    }
+
+    if ( isset( $_GET['midigator_export'] ) ) {
+        $result = FrmMidigatorMigrations::exportData();
+        echo '<pre>'; print_r($result); echo '</pre>';
+    }
+
+} );
