@@ -4,13 +4,13 @@ class FrmMidigatorPreventionHelper {
 
     protected FrmMidigatorApi $api;
     protected $preventionModel;
-    protected $preventionHistoryModel;
+    //protected $preventionHistoryModel;
 
     public function __construct(FrmMidigatorApi $api=null) {
         $this->api = $api ?? new FrmMidigatorApi();
 
         $this->preventionModel = new FrmMidigatorPreventionModel();
-        $this->preventionHistoryModel = new FrmMidigatorPreventionHistoryModel();
+        //$this->preventionHistoryModel = new FrmMidigatorPreventionHistoryModel();
     }
 
     public function resolvePreventionAlert(string $preventionGuid, string $resolutionType, string $otherDescription = ''): array {

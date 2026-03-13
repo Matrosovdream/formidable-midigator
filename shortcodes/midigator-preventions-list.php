@@ -175,7 +175,21 @@ final class MidigatorPreventionsListShortcode {
                 </div>
 
                 <input type="hidden" name="<?php echo esc_attr(self::QP_PAGE); ?>" value="1">
+
+                <div class="mid-pre-filter mid-pre-filter-actions mid-pre-filter-actions-right">
+                    <label>&nbsp; &nbsp; &nbsp; &nbsp;</label>
+                    <div class="mid-pre-inline mid-pre-inline-right">
+                        <a
+                            class="mid-pre-btn mid-pre-btn-success mid-pre-btn-corner"
+                            href="<?php echo esc_url( home_url( MIDIGATOR_RESOLVED_LIST_PAGE ) ); ?>"
+                            target="_blank"
+                        >Resolved</a>
+                    </div>
+                </div>
+
             </form>
+
+            
 
             <div class="mid-pre-statusbar" id="midPreBulkStatusbar"></div>
 
@@ -660,6 +674,7 @@ final class MidigatorPreventionsListShortcode {
                 <td class="mid-pre-normalized"><?php echo esc_html($descriptor); ?></td>
 
                 <td>
+
                     <?php if (!$rowResolved): ?>
 
                         <button
@@ -721,43 +736,55 @@ final class MidigatorPreventionsListShortcode {
                 $refundedAmount = isset($payment['refunded_amount']) ? (string) $payment['refunded_amount'] : '';
     
                 $isRefunded = strtolower($paymentStatus) === 'refunded';
+
+                $createdAt = isset($o['created_at']) ? (string) $o['created_at'] : '';
                 ?>
+
                 <div class="mid-pre-order-row" data-order-id="<?php echo esc_attr((string) $orderId); ?>">
-                    <div class="mid-pre-order-main">
-                        <label class="mid-pre-order-check-wrap">
-                            <input
-                                type="checkbox"
-                                class="mid-pre-order-check"
-                                data-order-id="<?php echo esc_attr((string) $orderId); ?>"
-                            >
-                            <span class="mid-pre-order-id">#<?php echo esc_html((string) $orderId); ?></span>
-                        </label>
+
+                    <div class="mid-pre-order-top">
+                        <div class="mid-pre-order-main">
+                            <label class="mid-pre-order-check-wrap">
+                                <input
+                                    type="checkbox"
+                                    class="mid-pre-order-check"
+                                    data-order-id="<?php echo esc_attr((string) $orderId); ?>"
+                                >
+                                <span class="mid-pre-order-id">#<?php echo esc_html((string) $orderId); ?></span>
+                            </label>
+                        </div>
+
+                        <div class="mid-pre-order-actions">
+                            <?php if (!$isRefunded): ?>
+                                <button
+                                    type="button"
+                                    class="mid-pre-btn mid-pre-btn-success mid-pre-order-refund-btn"
+                                    data-order-id="<?php echo esc_attr((string) $orderId); ?>"
+                                >Refund</button>
+
+                                <span class="mid-pre-inline-msg ok mid-pre-order-refund-result" style="display:none;">Refunded</span>
+                            <?php else: ?>
+                                <span class="mid-pre-inline-msg ok mid-pre-order-refund-result">Refunded</span>
+                            <?php endif; ?>
+                        </div>
                     </div>
-    
+
                     <div class="mid-pre-order-meta">
                         <div class="mid-pre-order-payment-status">
-                            <?php echo esc_html('Payment: ' . ($paymentStatus !== '' ? $paymentStatus : '—')); ?>
+                            Payment status: <b><?php echo ($paymentStatus !== '' ? $paymentStatus : '—'); ?></b>
                         </div>
-    
+
                         <div class="mid-pre-order-payment-refund">
-                            <?php echo esc_html('To refund: ' . ($refundedAmount !== '' ? $refundedAmount : '0') . '/' . ($fullAmount !== '' ? $fullAmount : '0')); ?>
+                            Payment date: <b><?php echo ($createdAt !== '' ? $createdAt : '—'); ?></b>
+                        </div>
+
+                        <div class="mid-pre-order-payment-refund">
+                            To refund: <b><?php echo ($refundedAmount !== '' ? $refundedAmount : '0') . '/' . ($fullAmount !== '' ? $fullAmount : '0'); ?></b>
                         </div>
                     </div>
-    
-                    <div class="mid-pre-order-actions">
-                        <?php if (!$isRefunded): ?>
-                            <button
-                                type="button"
-                                class="mid-pre-btn mid-pre-btn-success mid-pre-order-refund-btn"
-                                data-order-id="<?php echo esc_attr((string) $orderId); ?>"
-                            >Refund</button>
-    
-                            <span class="mid-pre-inline-msg ok mid-pre-order-refund-result" style="display:none;">Refunded</span>
-                        <?php else: ?>
-                            <span class="mid-pre-inline-msg ok mid-pre-order-refund-result">Refunded</span>
-                        <?php endif; ?>
-                    </div>
+
                 </div>
+
             <?php endforeach; ?>
         </div>
         <?php

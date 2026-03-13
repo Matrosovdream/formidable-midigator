@@ -110,7 +110,7 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
      * @param array $entities ['resolve','resolve_history'] or ['resolve'=>true,'resolve_history'=>true]
      * @return array|WP_Error
      */
-    public function getEntitiesById( int $preventionId, array $entities = [ 'resolve', 'resolve_history' ] ) {
+    public function getEntitiesById( int $preventionId, array $entities = [ 'resolve', 'resolve_history', 'orders' ], array $preventionRow = [] ) {
         $preventionId = (int) $preventionId;
         if ( $preventionId <= 0 ) {
             return new WP_Error( 'invalid_id', __( 'Invalid prevention ID.', 'frm-midigator' ) );
@@ -118,6 +118,7 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
 
         $wantResolve = in_array( 'resolve', $entities, true ) || ( isset( $entities['resolve'] ) && $entities['resolve'] );
         $wantHist    = in_array( 'resolve_history', $entities, true ) || ( isset( $entities['resolve_history'] ) && $entities['resolve_history'] );
+        $wantOrders = in_array( 'orders', $entities, true ) || ( isset( $entities['orders'] ) && $entities['orders'] );
 
         $out = [
             'resolve'         => null,
@@ -126,13 +127,16 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
 
         $resolveModel = new FrmMidigatorResolveModel();
         $histModel    = new FrmMidigatorResolveHistoryModel();
+        $orderHelper   = new DotFrmOrderHelper();
 
+        // Resolve, one row by prevention_id
         if ( $wantResolve ) {
             $resolve = $resolveModel->getByPreventionId( $preventionId );
             if ( is_wp_error( $resolve ) ) { return $resolve; }
             $out['resolve'] = $resolve;
         }
 
+        // History of resolving, ALL rows by prevention_id (not resolve_id)
         if ( $wantHist ) {
             // IMPORTANT: history by prevention_id (ALL rows), not resolve_id
             $history = $histModel->getList(
@@ -141,6 +145,16 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
             );
             if ( is_wp_error( $history ) ) { return $history; }
             $out['resolve_history'] = $history['data'] ?? [];
+        }
+
+        // Order by BIN and last4
+        if ( $wantOrders && ! empty( $preventionRow ) ) {
+            $orders = $orderHelper->getItemsByCardValues(
+                $preventionRow['card_first_6'],
+                $preventionRow['card_last_4']
+            );
+            if ( is_wp_error( $orders ) ) { return $orders; }
+            $out['orders'] = $orders;
         }
 
         return $out;
@@ -253,7 +267,7 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
             foreach ( $result['data'] as &$row ) {
                 $pid = isset( $row['id'] ) ? (int) $row['id'] : 0;
                 if ( $pid > 0 ) {
-                    $entities = $this->getEntitiesById( $pid, (array) $includeEntities ); 
+                    $entities = $this->getEntitiesById( $pid, (array) $includeEntities, $row ); 
                     if ( ! is_wp_error( $entities ) ) {
                         $row['_entities'] = $entities;
                     }

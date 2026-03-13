@@ -42,12 +42,12 @@ class FrmMidigatorApi extends MidigatorLib {
      * Prevention flow “list” (subscriptions)
      * ============================================================ */
 
-    public function listSubscriptions(): array {
+    public function listSubscriptions():mixed {
         $url = $this->buildUrl('events', 'subscribe');
         return $this->request('GET', $url);
     }
 
-    public function listPreventionFlowList(): array {
+    public function listPreventionFlowList():mixed {
         $res = $this->listSubscriptions();
         if (!$res['ok']) return $res;
 

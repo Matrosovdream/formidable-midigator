@@ -128,11 +128,11 @@ class MidigatorLib {
      * HTTP
      * ============================================================ */
 
-    protected function request(string $method, string $url, ?array $body = null): array {
+    protected function request(string $method, string $url, ?array $body = null):mixed {
 
         $token = $this->getBearerToken();
         if (!$token) {
-            return ['ok' => false, 'error' => 'Unable to obtain Midigator bearer token'];
+            return new WP_error('auth_failed', 'Unable to obtain Midigator bearer token');
         }
 
         $args = [
@@ -152,7 +152,7 @@ class MidigatorLib {
         $res = wp_remote_request($url, $args);
 
         if (is_wp_error($res)) {
-            return ['ok' => false, 'error' => $res->get_error_message()];
+            return new WP_error('http_request_failed', $res->get_error_message());
         }
 
         $status = (int) wp_remote_retrieve_response_code($res);
@@ -167,12 +167,11 @@ class MidigatorLib {
             ];
         }
 
-        return [
-            'ok'     => false,
-            'status' => $status,
-            'error'  => (is_array($data) && isset($data['message'])) ? $data['message'] : $raw,
-            'data'   => is_array($data) ? $data : null,
-        ];
+        return new WP_error(
+            'http_error_' . $status, 
+            'HTTP error ' . $status . ': ' . $raw, 
+            ['status' => $status, 'response' => $res]
+        );
     }
 
     /* ============================================================

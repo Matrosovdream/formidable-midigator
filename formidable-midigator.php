@@ -56,7 +56,46 @@ add_action('init', function() {
         exit();
     }
 
+    if( isset( $_GET['get_order'] ) ) {
+        getOrder();
+        exit();
+    }
+
+    if( isset( $_GET['refund_order'] ) ) {
+        refundOrder();
+        exit();
+    }
+
 });
+
+function refundOrder() {
+
+    $entryId = $_GET['refund_order'];
+
+    $helper = new DotFrmOrderHelper();
+    $res = $helper->runFullRefund($entryId);
+
+    if (is_wp_error($res)) {
+        echo 'Error: ' . $res->get_error_message();
+    }
+
+    echo '<pre>';
+    print_r($res);
+    echo '</pre>';
+
+}
+
+function getOrder() {
+
+    $orderId = (int) $_GET['get_order'];
+    $helper = new DotFrmOrderHelper();
+    $order = $helper->getOrderById($orderId);
+
+    echo '<pre>';
+    print_r($order);
+    echo '</pre>';
+
+}
 
 function getPrevention() {
 
