@@ -73,10 +73,16 @@ final class MidigatorPreventionsListShortcode {
             $filters['card_last_4'] = substr($card_last_4, 0, 4);
         }
 
+        // Order by default
+        $sort = 'prevention_timestamp';
+        $dir = 'DESC';
+
         $per_page = 30;
         $opts = [
             'page' => $page,
             'per_page' => $per_page,
+            'order_by' => $sort,
+            'order' => $dir,
             'includeEntities' => [ 'resolve', 'resolve_history', 'orders' ],
         ];
 
@@ -779,7 +785,7 @@ final class MidigatorPreventionsListShortcode {
                         </div>
 
                         <div class="mid-pre-order-payment-refund">
-                            To refund: <b><?php echo ($refundedAmount !== '' ? $refundedAmount : '0') . '/' . ($fullAmount !== '' ? $fullAmount : '0'); ?></b>
+                            Refunded: <b><?php echo ($refundedAmount !== '' ? $refundedAmount : '0') . '/' . ($fullAmount !== '' ? $fullAmount : '0'); ?></b>
                         </div>
                     </div>
 
