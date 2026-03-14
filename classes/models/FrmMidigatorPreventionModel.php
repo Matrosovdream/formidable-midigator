@@ -132,8 +132,9 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
         // Resolve, one row by prevention_id
         if ( $wantResolve ) {
             $resolve = $resolveModel->getByPreventionId( $preventionId );
-            if ( is_wp_error( $resolve ) ) { return $resolve; }
-            $out['resolve'] = $resolve;
+            if ( !is_wp_error( $resolve ) ) { 
+                $out['resolve'] = $resolve;
+            }
         }
 
         // History of resolving, ALL rows by prevention_id (not resolve_id)
@@ -143,8 +144,9 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
                 [ 'prevention_id' => $preventionId ],
                 [ 'page' => 1, 'per_page' => 2000, 'order_by' => 'id', 'order' => 'DESC' ]
             );
-            if ( is_wp_error( $history ) ) { return $history; }
-            $out['resolve_history'] = $history['data'] ?? [];
+            if ( !is_wp_error( $history ) ) { 
+                $out['resolve_history'] = $history;
+            }
         }
 
         // Order by BIN and last4
@@ -153,8 +155,9 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
                 $preventionRow['card_first_6'],
                 $preventionRow['card_last_4']
             );
-            if ( is_wp_error( $orders ) ) { return $orders; }
-            $out['orders'] = $orders;
+            if ( !is_wp_error( $orders ) ) {
+                $out['orders'] = $orders;
+            }
         }
 
         return $out;
