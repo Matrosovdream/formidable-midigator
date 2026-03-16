@@ -5,6 +5,7 @@ final class MidigatorPreventionsListShortcode {
 
     public const SHORTCODE = 'midigator-preventions-list';
     private $shortcodeHelper;
+    private bool $showResolved = false;
 
     /** GET params */
     private const QP_PAGE        = 'mid_pre_page';
@@ -24,6 +25,8 @@ final class MidigatorPreventionsListShortcode {
     private const AJAX_ACTION_BULK_RESOLVE = 'midigator_bulk_resolve_prevention';
     private const AJAX_ACTION_BULK_REFUND  = 'midigator_bulk_full_refund_prevention';
     private const AJAX_ACTION_ORDER_REFUND = 'midigator_related_order_refund';
+    private const AJAX_ACTION_BULK_DELETE      = 'midigator_bulk_delete_prevention';
+    private const AJAX_ACTION_DELETE_ALL       = 'midigator_delete_all_preventions';
 
     /** Assets */
     private const CSS_HANDLE = 'midigator-preventions-list-css';
@@ -39,6 +42,9 @@ final class MidigatorPreventionsListShortcode {
         add_action('wp_ajax_' . self::AJAX_ACTION_BULK_RESOLVE, [ $this, 'ajax_bulk_resolve_prevention' ]);
         add_action('wp_ajax_' . self::AJAX_ACTION_BULK_REFUND, [ $this, 'ajax_bulk_full_refund_prevention' ]);
         add_action('wp_ajax_' . self::AJAX_ACTION_ORDER_REFUND, [ $this, 'ajax_related_order_refund' ]);
+        add_action('wp_ajax_' . self::AJAX_ACTION_BULK_DELETE, [ $this, 'ajax_bulk_delete_prevention' ]);
+        add_action('wp_ajax_' . self::AJAX_ACTION_DELETE_ALL, [ $this, 'ajax_delete_all_preventions' ]);
+
     }
 
     public function render_shortcode($atts = []): string {
@@ -52,6 +58,8 @@ final class MidigatorPreventionsListShortcode {
 
         $showResolved      = filter_var($atts['show-resolved'], FILTER_VALIDATE_BOOLEAN);
         $defaultBulkReason = sanitize_text_field((string) $atts['default-bulk-reason']);
+
+        $this->showResolved = $showResolved;
 
         $page = isset($_GET[self::QP_PAGE]) ? max(1, (int) $_GET[self::QP_PAGE]) : 1;
         $q    = isset($_GET[self::QP_Q]) ? sanitize_text_field((string) $_GET[self::QP_Q]) : '';
@@ -131,8 +139,18 @@ final class MidigatorPreventionsListShortcode {
 
                     <button class="faip-btn faip-btn-primary" id="midPreBulkResolve" type="button" disabled>Resolve</button>
                     <button class="faip-btn faip-btn-success" id="midPreBulkRefund" type="button" disabled>Full refund</button>
+                    <button class="faip-btn faip-btn-danger" id="midPreBulkDelete" type="button" disabled>Delete</button>
                 </div>
+
             </div>
+
+            <?php if( !$showResolved ) { ?>
+
+                <div class="mid-pre-actions-under">
+                    <button class="faip-btn faip-btn-danger faip-btn-danger-lg" id="midPreDeleteAll" type="button" disabled>Delete all</button>
+                </div>
+
+            <?php } ?>
 
             <form method="get" class="mid-pre-filters" id="midPreFiltersForm">
                 <?php
@@ -326,7 +344,47 @@ final class MidigatorPreventionsListShortcode {
             'action_resolve'      => self::AJAX_ACTION_RESOLVE,
             'action_bulk_resolve' => self::AJAX_ACTION_BULK_RESOLVE,
             'action_bulk_refund'  => self::AJAX_ACTION_BULK_REFUND,
-            'action_order_refund'  => self::AJAX_ACTION_ORDER_REFUND,
+            'action_order_refund' => self::AJAX_ACTION_ORDER_REFUND,
+            'action_bulk_delete'  => self::AJAX_ACTION_BULK_DELETE,
+            'action_delete_all'   => self::AJAX_ACTION_DELETE_ALL,
+        ]);
+
+    }
+
+    public function ajax_bulk_delete_prevention(): void {
+        check_ajax_referer(self::NONCE_ACTION, '_ajax_nonce');
+    
+        $ids = isset($_POST['ids']) ? (array) $_POST['ids'] : [];
+        $preventionGuids = isset($_POST['prevention_guids']) ? (array) $_POST['prevention_guids'] : [];
+    
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        $preventionGuids = array_values(array_filter(array_map('sanitize_text_field', $preventionGuids)));
+
+        $this->shortcodeHelper->deletePreventions($ids);
+    
+        wp_send_json_success([
+            'ok' => true,
+            'ids' => $ids,
+            'prevention_guids' => $preventionGuids,
+        ]);
+    }
+
+    public function ajax_delete_all_preventions(): void {
+        check_ajax_referer(self::NONCE_ACTION, '_ajax_nonce');
+    
+        $ids = isset($_POST['ids']) ? (array) $_POST['ids'] : [];
+        $preventionGuids = isset($_POST['prevention_guids']) ? (array) $_POST['prevention_guids'] : [];
+    
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        $preventionGuids = array_values(array_filter(array_map('sanitize_text_field', $preventionGuids)));
+
+        // Process
+        $this->shortcodeHelper->deletePreventionsAll([]);
+
+        wp_send_json_success([
+            'ok' => true,
+            'ids' => $ids,
+            'prevention_guids' => $preventionGuids,
         ]);
     }
 
