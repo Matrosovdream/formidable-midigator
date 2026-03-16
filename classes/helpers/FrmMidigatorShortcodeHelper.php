@@ -88,4 +88,34 @@ final class FrmMidigatorShortcodeHelper {
         return (string) ob_get_clean();
 
     }
+
+    public function deletePreventionById(int $id): bool {
+
+        $preventionHelper = new FrmMidigatorPreventionHelper();
+        return $preventionHelper->deletePreventionById($id);
+
+    }
+
+    public function deletePreventions( array $preventionIds ): bool {
+
+        $preventionHelper = new FrmMidigatorPreventionHelper();
+        foreach ($preventionIds as $id) {
+            $preventionHelper->deletePreventionById($id);
+        }
+
+        return true;
+
+    }    
+
+    public function deletePreventionsAll( array $filter=[] ): bool {
+
+        // Possible for now: is_resolved=true/false
+
+        $preventionHelper = new FrmMidigatorPreventionHelper();
+        $preventionHelper->deletePreventionsAll( $filter );
+
+        return true;
+
+    }
+
 }

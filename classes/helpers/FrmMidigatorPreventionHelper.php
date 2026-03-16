@@ -47,4 +47,36 @@ class FrmMidigatorPreventionHelper {
 
     }
 
+    public function deletePreventionById(int $id): bool {
+
+        // Delete local record
+        $this->preventionModel->deleteById($id);
+        return true;
+
+    }
+
+    public function deletePreventionsAll( array $filter ): bool {
+
+        // Possible for now: is_resolved=true/false
+
+        // All
+        $opts = array_merge( $filter, [
+            'per_page' => 100000,
+            'page' => 1,
+        ] );
+
+        // Get all matching preventions
+        $preventions = $this->preventionModel->getList( $filter, $opts );
+
+        $list = $preventions['data'] ?? [];
+
+        // Delete each prevention
+        foreach ($list as $prevention) {
+            $this->preventionModel->deleteById( $prevention['id'] );
+        }
+
+        return true;
+
+    }
+
 }

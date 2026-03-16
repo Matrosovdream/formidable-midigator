@@ -59,6 +59,26 @@ abstract class FrmMidigatorAbstractModel {
         return (int) $res;
     }
 
+    public function deleteById( int $id ): bool {
+
+        $res = $this->db->delete(
+            $this->table,
+            [ 'id' => $id ]
+        );
+
+        return (bool) $res;
+    }
+
+    public function deleteByPreventionId( int $preventionId ): bool {
+
+        $res = $this->db->delete(
+            $this->table,
+            [ 'prevention_id' => $preventionId ]
+        );
+
+        return (bool) $res;
+    }
+
     /**
      * Upsert by GUID column (prevention_guid).
      * - Updates if exists, otherwise inserts.

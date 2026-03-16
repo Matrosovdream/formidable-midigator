@@ -281,4 +281,24 @@ class FrmMidigatorPreventionModel extends FrmMidigatorAbstractModel {
 
         return $result;
     }
+
+    public function deleteById( int $id ): bool {
+
+        // Delete main record
+        $deleted = parent::deleteById( $id );
+        if ( ! $deleted ) {
+            return false;
+        }
+
+        // Delete related resolves + history
+        $resolveModel = new FrmMidigatorResolveModel();
+        $histModel    = new FrmMidigatorResolveHistoryModel();
+
+        $resolveModel->deleteByPreventionId( $id );
+        $histModel->deleteByPreventionId( $id );
+
+        return true;
+
+    }
+
 }
