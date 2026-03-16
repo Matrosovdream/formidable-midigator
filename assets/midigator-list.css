@@ -20,7 +20,12 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.mid-pre-actions-under {
+  display: flex;
   justify-content: flex-end;
+  margin-top: 10px;
 }
 
 .mid-pre-bulk-select {
@@ -64,6 +69,10 @@
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+.mid-pre-inline-right {
+  justify-content: flex-end;
 }
 
 .mid-pre-statusbar {
@@ -172,6 +181,26 @@
 .faip-btn-success {
   border-color: #0a7a2b;
   color: #0a7a2b;
+}
+
+.mid-pre-btn-danger,
+.faip-btn-danger {
+  border-color: #d1242f;
+  color: #d1242f;
+}
+
+.mid-pre-btn-danger:hover,
+.faip-btn-danger:hover {
+  background: #fff5f5;
+}
+
+.mid-pre-btn-danger-lg,
+.faip-btn-danger-lg {
+  min-width: 140px;
+  min-height: 42px;
+  padding: 10px 18px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .mid-pre-page {
@@ -293,7 +322,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding-left: 26px; /* немного под checkbox/номер */
+  padding-left: 26px;
 }
 
 .mid-pre-order-actions {
@@ -302,6 +331,7 @@
   gap: 8px;
   margin-top: 0;
 }
+
 .mid-pre-order-id {
   font-size: 12px;
   color: #24292f;
@@ -322,7 +352,7 @@
   text-decoration: underline;
 }
 
-.mid-pre-resolved-box{
+.mid-pre-resolved-box {
   margin-top: 2px;
   padding: 8px 10px;
   border: 1px solid #0a7a2b;
@@ -330,14 +360,14 @@
   background: #fff;
 }
 
-.mid-pre-resolved-line{
+.mid-pre-resolved-line {
   font-size: 12px;
   font-weight: 600;
   color: #0a7a2b;
   line-height: 1.35;
 }
 
-.mid-pre-resolved-desc{
+.mid-pre-resolved-desc {
   margin-top: 4px;
   font-size: 12px;
   color: #57606a;
@@ -346,43 +376,43 @@
   line-height: 1.35;
 }
 
-.mid-pre-order-main{
-  display:flex;
-  align-items:center;
-  gap:10px;
+.mid-pre-order-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.mid-pre-order-check-wrap{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  margin:0;
-  cursor:pointer;
+.mid-pre-order-check-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  cursor: pointer;
 }
 
-.mid-pre-order-meta{
-  margin-top:6px;
-  display:flex;
-  flex-direction:column;
-  gap:4px;
+.mid-pre-order-meta {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .mid-pre-order-payment-status,
-.mid-pre-order-payment-refund{
-  font-size:12px;
-  color:#57606a;
-  line-height:1.35;
+.mid-pre-order-payment-refund {
+  font-size: 12px;
+  color: #57606a;
+  line-height: 1.35;
 }
 
-.mid-pre-order-actions{
-  margin-top:8px;
-  display:flex;
-  align-items:center;
-  gap:8px;
+.mid-pre-order-actions {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.mid-pre-confirm-modal{
-  max-width:420px;
+.mid-pre-confirm-modal {
+  max-width: 420px;
 }
 
 @media (max-width: 900px) {
@@ -399,4 +429,3 @@
     max-width: 100%;
   }
 }
-
