@@ -16,6 +16,7 @@ final class MidigatorPreventionsListShortcode {
     private const QP_CARD_LAST4  = 'card_last_4';
 
     private const ALERT_EXPIRATION_HOURS = 72;
+    private const ORDER_URL = '/orders/entry/';
 
     /** AJAX */
     private const NONCE_ACTION             = 'midigator_preventions_nonce';
@@ -736,6 +737,8 @@ final class MidigatorPreventionsListShortcode {
                 if ($orderId <= 0) continue;
     
                 $payment = isset($o['payment']) && is_array($o['payment']) ? $o['payment'] : [];
+
+                $orderLink = self::ORDER_URL.$orderId;
     
                 $paymentStatus  = isset($payment['status']) ? (string) $payment['status'] : '';
                 $fullAmount     = isset($payment['full_amount']) ? (string) $payment['full_amount'] : '';
@@ -758,6 +761,7 @@ final class MidigatorPreventionsListShortcode {
                                 >
                                 <span class="mid-pre-order-id">#<?php echo esc_html((string) $orderId); ?></span>
                             </label>
+                            <a href="<?php echo $orderLink; ?>" target="_blank">Open</a>
                         </div>
 
                         <div class="mid-pre-order-actions">
