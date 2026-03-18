@@ -146,9 +146,11 @@ final class MidigatorPreventionsListShortcode {
 
             <?php if( !$showResolved ) { ?>
 
+                <!--
                 <div class="mid-pre-actions-under">
                     <button class="faip-btn faip-btn-danger faip-btn-danger-lg" id="midPreDeleteAll" type="button" disabled>Delete all</button>
                 </div>
+                -->
 
             <?php } ?>
 
@@ -231,13 +233,13 @@ final class MidigatorPreventionsListShortcode {
                     <tr>
                         <th style="width:34px;"><input type="checkbox" id="midPreCheckAll"></th>
                         <th style="width:160px;">Received on</th>
-                        <th style="width:160px;">Transaction date</th>
                         <th style="width:170px;">Alert expiration</th>
                         <th style="width:120px;">Amount</th>
                         <th style="width:90px;">BIN</th>
                         <th style="width:80px;">Last 4</th>
                         <th style="width:220px;">ARN</th>
                         <th style="width:160px;">Descriptor</th>
+                        <th style="width:160px;">Transaction date</th>
                         <th style="width:450px;">Actions</th>
                     </tr>
                 </thead>
@@ -717,6 +719,10 @@ final class MidigatorPreventionsListShortcode {
             if ($arn === '') $arn = '—';
             if ($descriptor === '') $descriptor = '—';
 
+            // Remove time from $txDate if it's the same as $receivedOn date
+            if ($txDate !== '—' ) {
+                $txDate = date('Y-m-d', strtotime($txDate));
+            }
             $btnDisabled = ($guid === '');
             ?>
             <tr data-item-id="<?php echo esc_attr((string) $id); ?>" data-guid="<?php echo esc_attr($guid); ?>">
@@ -730,13 +736,13 @@ final class MidigatorPreventionsListShortcode {
                 </td>
 
                 <td><?php echo esc_html($receivedOn); ?></td>
-                <td><?php echo esc_html($txDate); ?></td>
                 <td><?php echo esc_html($expiration); ?></td>
                 <td><?php echo esc_html($amount . ' ' . $currency); ?></td>
                 <td><?php echo esc_html($bin); ?></td>
                 <td><?php echo esc_html($last4); ?></td>
                 <td><?php echo esc_html($arn); ?></td>
                 <td class="mid-pre-normalized"><?php echo esc_html($descriptor); ?></td>
+                <td><?php echo esc_html($txDate); ?></td>
 
                 <td>
 
@@ -805,6 +811,11 @@ final class MidigatorPreventionsListShortcode {
                 $isRefunded = strtolower($paymentStatus) === 'refunded';
 
                 $createdAt = isset($o['created_at']) ? (string) $o['created_at'] : '';
+
+                // Skip payment status = failed
+                if (strtolower($paymentStatus) === 'failed') {
+                    continue;
+                }
                 ?>
 
                 <div class="mid-pre-order-row" data-order-id="<?php echo esc_attr((string) $orderId); ?>">
