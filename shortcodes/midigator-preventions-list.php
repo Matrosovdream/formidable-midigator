@@ -810,7 +810,8 @@ final class MidigatorPreventionsListShortcode {
     
                 $isRefunded = strtolower($paymentStatus) === 'refunded';
 
-                $createdAt = isset($o['created_at']) ? (string) $o['created_at'] : '';
+                $createdAt  = isset($o['created_at']) ? (string) $o['created_at'] : '';
+                $userEmail  = isset($o['field_values']['user_email']) ? (string) $o['field_values']['user_email'] : '';
 
                 // Skip payment status = failed
                 if (strtolower($paymentStatus) === 'failed') {
@@ -860,6 +861,12 @@ final class MidigatorPreventionsListShortcode {
                         <div class="mid-pre-order-payment-refund">
                             Refunded: <b><?php echo ($refundedAmount !== '' ? $refundedAmount : '0') . '/' . ($fullAmount !== '' ? $fullAmount : '0'); ?></b>
                         </div>
+
+                        <?php if ( $userEmail !== '' ) : ?>
+                        <div class="mid-pre-order-payment-refund">
+                            Email: <b><?php echo esc_html( $userEmail ); ?></b>
+                        </div>
+                        <?php endif; ?>
                     </div>
 
                 </div>
