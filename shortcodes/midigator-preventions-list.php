@@ -211,6 +211,11 @@ final class MidigatorPreventionsListShortcode {
                             href="<?php echo esc_url( home_url( MIDIGATOR_RESOLVED_LIST_PAGE ) ); ?>"
                             target="_blank"
                         >Resolved</a>
+                        <a
+                            class="mid-pre-btn mid-pre-btn-corner"
+                            href="<?php echo esc_url( home_url( MIDIGATOR_RDR_LIST_PAGE ) ); ?>"
+                            target="_blank"
+                        >RDR</a>
                     </div>
                 </div>
 

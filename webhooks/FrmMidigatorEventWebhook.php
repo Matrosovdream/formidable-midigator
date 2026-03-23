@@ -94,14 +94,27 @@ class FrmMidigatorEventWebhook {
 
         // Put into the Preventions table using model
         if (
-            $type === 'prevention.new' && 
+            $type === 'prevention.new' &&
             class_exists('FrmMidigatorPreventionModel')
             ) {
             try {
                 $model = new FrmMidigatorPreventionModel();
                 $model->create($dataFields);
             } catch (\Throwable $e) {
-                
+
+            }
+        }
+
+        // Put into the RDR table using model
+        if (
+            $type === 'rdr.new' &&
+            class_exists('FrmMidigatorRdrModel')
+        ) {
+            try {
+                $model = new FrmMidigatorRdrModel();
+                $model->updateCreateByGuid( (string) ($dataFields['rdr_guid'] ?? ''), $dataFields, 'rdr_guid' );
+            } catch (\Throwable $e) {
+
             }
         }
 

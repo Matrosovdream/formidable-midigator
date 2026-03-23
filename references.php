@@ -5,8 +5,7 @@ if ( ! defined('ABSPATH') ) { exit; }
  * Links
  */
 define('MIDIGATOR_RESOLVED_LIST_PAGE', '/midigator-preventions-list-resolved/');
-
-define('MIDIGATOR_WEBHOOK_EMAIL', 'matrosovdream@gmail.com');
+define('MIDIGATOR_RDR_LIST_PAGE', '/midigator-rdr-list/');
 
 
 /*
@@ -103,6 +102,8 @@ define('MIDIGATOR_LOG_MAP', [
     'chargeback.result'      => 'chargeback_result.log',
     'chargeback.dnf'         => 'chargeback_dnf.log',
 ]);
+
+define('MIDIGATOR_WEBHOOK_EMAIL', 'matrosovdream@gmail.com');
 
 /**
  * Resolve reasons

@@ -199,7 +199,7 @@ abstract class FrmMidigatorAbstractModel {
         }
 
         // allow only safe column names
-        $allowedColumns = ['prevention_guid', 'guid', 'id'];
+        $allowedColumns = ['prevention_guid', 'rdr_guid', 'guid', 'id'];
 
         if (!in_array($guidCol, $allowedColumns, true)) {
             return new WP_Error(

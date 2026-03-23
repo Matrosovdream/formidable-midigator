@@ -95,6 +95,7 @@ class FrmMidigatorInit {
         require_once FRM_MDG_BASE_URL.'/classes/models/FrmMidigatorPreventionModel.php';
         require_once FRM_MDG_BASE_URL.'/classes/models/FrmMidigatorResolveModel.php';
         require_once FRM_MDG_BASE_URL.'/classes/models/FrmMidigatorResolveHistoryModel.php';
+        require_once FRM_MDG_BASE_URL.'/classes/models/FrmMidigatorRdrModel.php';
 
     }
 
@@ -102,6 +103,7 @@ class FrmMidigatorInit {
 
         // Shortcodes
         require_once FRM_MDG_BASE_URL.'/shortcodes/midigator-preventions-list.php';
+        require_once FRM_MDG_BASE_URL.'/shortcodes/midigator-rdr-list.php';
 
     }
 

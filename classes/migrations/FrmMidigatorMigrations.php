@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 class FrmMidigatorMigrations {
 
     /** Bump when schema changes */
-    public const DB_VERSION     = '1.1.0';
+    public const DB_VERSION     = '1.2.0';
 
     /** Store installed db version in WP options */
     public const VERSION_OPTION = 'frm_midigator_db_version';
@@ -28,6 +28,7 @@ class FrmMidigatorMigrations {
         $sql[] = self::sql_midigator_preventions( $prefix, $charset_collate );
         $sql[] = self::sql_midigator_resolves( $prefix, $charset_collate );
         $sql[] = self::sql_midigator_resolve_history( $prefix, $charset_collate );
+        $sql[] = self::sql_midigator_rdr( $prefix, $charset_collate );
 
         foreach ( $sql as $statement ) {
             dbDelta( $statement );
@@ -271,6 +272,7 @@ class FrmMidigatorMigrations {
             $wpdb->prefix . 'frm_midigator_preventions',
             $wpdb->prefix . 'frm_midigator_resolves',
             $wpdb->prefix . 'frm_midigator_resolve_history',
+            $wpdb->prefix . 'frm_midigator_rdr',
         ];
     }
 
@@ -349,6 +351,59 @@ class FrmMidigatorMigrations {
             KEY idx_prevention_type (prevention_type),
             KEY idx_prevention_ts (prevention_timestamp),
             KEY idx_transaction_ts (transaction_timestamp),
+            KEY idx_is_resolved (is_resolved),
+            KEY idx_created_at (created_at),
+            KEY idx_updated_at (updated_at)
+        ) {$collate};";
+    }
+
+    private static function sql_midigator_rdr(string $prefix, string $collate): string {
+
+        $table = $prefix . 'frm_midigator_rdr';
+
+        return "CREATE TABLE {$table} (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+
+            amount decimal(12,2) NULL,
+            arn varchar(64) NULL,
+            auth_code varchar(32) NULL,
+
+            card_first_6 varchar(12) NULL,
+            card_last_4 varchar(8) NULL,
+
+            currency char(3) NULL,
+            merchant_descriptor varchar(255) NULL,
+
+            event_guid varchar(64) NULL,
+            event_timestamp datetime NULL,
+            event_type varchar(50) NULL,
+
+            rdr_guid varchar(64) NOT NULL,
+            rdr_case_number varchar(64) NULL,
+            rdr_date date NULL,
+            rdr_resolution varchar(80) NULL,
+            prevention_type varchar(50) NULL,
+
+            transaction_date date NULL,
+
+            order_id varchar(64) NULL,
+            is_resolved tinyint(1) NOT NULL DEFAULT 0,
+
+            created_at datetime NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+            PRIMARY KEY (id),
+
+            UNIQUE KEY uniq_rdr_guid (rdr_guid),
+
+            KEY idx_order_id (order_id),
+            KEY idx_arn (arn),
+            KEY idx_rdr_case_number (rdr_case_number),
+            KEY idx_rdr_date (rdr_date),
+            KEY idx_rdr_resolution (rdr_resolution),
+            KEY idx_prevention_type (prevention_type),
+            KEY idx_event_timestamp (event_timestamp),
+            KEY idx_transaction_date (transaction_date),
             KEY idx_is_resolved (is_resolved),
             KEY idx_created_at (created_at),
             KEY idx_updated_at (updated_at)
