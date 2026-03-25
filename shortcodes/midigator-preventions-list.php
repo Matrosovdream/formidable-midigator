@@ -872,6 +872,14 @@ final class MidigatorPreventionsListShortcode {
                             Email: <b><?php echo esc_html( $userEmail ); ?></b>
                         </div>
                         <?php endif; ?>
+
+                        <?php
+                            $activeLabels = isset($o['easypost']['stats']['active']) ? (int) $o['easypost']['stats']['active'] : 0;
+                            $activeLabelColor = $activeLabels > 0 ? 'green' : 'red';
+                        ?>
+                        <div class="mid-pre-order-payment-refund">
+                            Active labels: <b style="color: <?php echo $activeLabelColor; ?>;"><?php echo $activeLabels; ?></b>
+                        </div>
                     </div>
 
                 </div>
